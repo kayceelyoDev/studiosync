@@ -14,11 +14,8 @@ return new class extends Migration
         Schema::create('workspaces', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('project_name')->required();
-            $table->json('preferences');
-        $table->text('generated_prompt')->nullable();
-            $table->string('status')->default('pending');
-            $table->string('project_url')->nullable();
+            $table->string('name');
+            $table->string('slug')->unique();
             $table->timestamps();
         });
     }
