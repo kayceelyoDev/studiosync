@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -29,8 +29,18 @@ const mainNavItems: NavItem[] = [
     },
 ];
 
+const adminNavItems: NavItem[] = [
+    {
+        title: 'Client Requests',
+        href: '/admin/workspaces',
+        icon: BookOpen,
+    },
+];
 
 export function AppSidebar() {
+    const { auth } = usePage().props as any;
+    const isAdmin = auth?.roles && (auth.roles.includes('admin') || auth.roles.includes('super_admin'));
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -46,7 +56,8 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                {!isAdmin && <NavMain items={mainNavItems} />}
+                {isAdmin && <NavMain items={adminNavItems} />}
             </SidebarContent>
 
             <SidebarFooter>

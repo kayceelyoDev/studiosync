@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posteals | Artisan Photography & Design</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+        html { scroll-behavior: smooth; }
+        body { background-color: #faf6f0; color: #44403c; font-family: 'Lora', serif; }
+    </style>
+<style data-generated-responsive-guard>
+*, *::before, *::after { box-sizing: border-box; }
+body { max-width: 100%; overflow-x: hidden; }
+img, svg, video, canvas, iframe { max-width: 100%; }
+#mobile-menu { overflow: hidden; transition: max-height .3s ease-in-out, opacity .3s ease-in-out; }
+[data-bento-grid] { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+[data-bento-card] { min-width: 0; }
+@media (max-width: 767px) {
+  h1, h2, h3, h4, p, a, button { overflow-wrap: anywhere; }
+  .container { width: 100%; max-width: 100%; }
+    [data-bento-grid] { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body data-layout="bento" class="antialiased overflow-x-hidden">
+
+    <nav class="fixed top-0 left-0 right-0 z-50 bg-[#faf6f0]/80 backdrop-blur-md border-b border-[#44403c]/10">
+        <div class="max-w-[1700px] mx-auto px-6 lg:px-8 flex items-center justify-between h-20">
+            <a href="#" class="flex flex-col group">
+                <span class="font-['Playfair_Display'] text-2xl tracking-wide text-[#065f46]">Posteals</span>
+                <span class="text-[10px] uppercase tracking-[0.2em] text-[#78716c]">Artisan Photography</span>
+            </a>
+            <div class="hidden md:flex gap-8">
+                <a href="#work" class="text-sm uppercase tracking-widest hover:text-[#065f46] transition-colors">Portfolio</a>
+                <a href="#services" class="text-sm uppercase tracking-widest hover:text-[#065f46] transition-colors">Services</a>
+                <a href="#contact" class="text-sm uppercase tracking-widest px-4 py-1 border border-[#065f46] rounded-full hover:bg-[#065f46] hover:text-white transition-all">Inquire</a>
+            </div>
+            <button id="nav-trigger" class="md:hidden">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+        </div>
+        <div id="mobile-nav" class="md:hidden max-h-0 opacity-0 overflow-hidden bg-[#f5f2ed] border-b border-[#44403c]/10 transition-all duration-300">
+            <div class="flex flex-col p-6 gap-4">
+                <a href="#work" class="uppercase tracking-widest">Portfolio</a>
+                <a href="#services" class="uppercase tracking-widest">Services</a>
+                <a href="#contact" class="uppercase tracking-widest text-[#065f46]">Inquire</a>
+            </div>
+        </div>
+    </nav>
+
+    <main data-bento-grid class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 p-4 lg:p-8 pt-28">
+        
+        <!-- Hero Card -->
+        <section data-bento-card class="bg-neutral-100 md:col-span-2 md:row-span-2 rounded-2xl sm:rounded-3xl p-8 sm:p-12 flex flex-col justify-end relative overflow-hidden">
+            <h1 class="font-['Playfair_Display'] text-5xl md:text-7xl mb-6 relative z-10">Crafting <span class="text-[#b45309]">Organic</span> Visual Narratives.</h1>
+            <p class="text-lg max-w-lg mb-8 relative z-10 opacity-80">Blending fine-art photography with minimalist design to capture the essence of your most important moments.</p>
+            <a href="#contact" class="bg-[#065f46] text-white px-8 py-4 rounded-full w-fit hover:-translate-y-1 transition-transform">Start a project</a>
+        </section>
+
+        <!-- About Card -->
+        <section data-bento-card class="bg-neutral-800/5 text-neutral-900 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:row-span-2 flex flex-col justify-between">
+            <h2 class="font-['Playfair_Display'] text-3xl">Philosophy</h2>
+            <div class="mt-8 space-y-4 text-sm leading-relaxed">
+                <p>I believe in the beauty of simplicity and the power of natural light.</p>
+                <p>My workflow is designed to strip away the noise and focus on what remains: raw, authentic, human connection.</p>
+            </div>
+            <div class="mt-8 pt-6 border-t border-black/10">
+                <span class="block text-xs uppercase tracking-widest text-[#b45309]">Location</span>
+                <span class="text-lg">Pacific Northwest</span>
+            </div>
+        </section>
+
+        <!-- Services Card -->
+        <section id="services" data-bento-card class="bg-white/5 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:col-span-2">
+            <h2 class="font-['Playfair_Display'] text-2xl mb-4 text-[#065f46]">Services</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="p-4 border border-[#44403c]/10 rounded-xl">
+                    <span class="block text-2xl mb-2">01</span>
+                    <h3 class="font-medium">Editorial</h3>
+                </div>
+                <div class="p-4 border border-[#44403c]/10 rounded-xl">
+                    <span class="block text-2xl mb-2">02</span>
+                    <h3 class="font-medium">Brand Identity</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- Featured Work -->
+        <section id="work" data-bento-card class="bg-[#065f46] text-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:col-span-2">
+            <h2 class="font-['Playfair_Display'] text-2xl mb-4">Latest Work</h2>
+            <div class="aspect-video bg-white/10 rounded-xl mb-4 flex items-center justify-center">
+                <span class="text-white/30 italic">Portfolio Placeholder</span>
+            </div>
+            <a href="#" class="inline-block text-sm border-b border-white pb-1">View Full Gallery</a>
+        </section>
+
+        <!-- Contact Card -->
+        <section id="contact" data-bento-card class="bg-neutral-100 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:col-span-2 lg:col-span-4 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+                <h2 class="font-['Playfair_Display'] text-3xl mb-2">Ready to create?</h2>
+                <p class="opacity-70">Reach out for collaborations and availability.</p>
+            </div>
+            <a href="mailto:hello@posteals.com" class="text-xl md:text-3xl font-['Playfair_Display'] underline decoration-[#b45309]">hello@posteals.com</a>
+        </section>
+
+    </main>
+
+    <script>
+        const trigger = document.getElementById('nav-trigger');
+        const menu = document.getElementById('mobile-nav');
+        trigger.addEventListener('click', () => {
+            if (menu.classList.contains('max-h-0')) {
+                menu.classList.remove('max-h-0', 'opacity-0');
+                menu.classList.add('max-h-[300px]', 'opacity-100');
+            } else {
+                menu.classList.add('max-h-0', 'opacity-0');
+                menu.classList.remove('max-h-[300px]', 'opacity-100');
+            }
+        });
+    </script>
+</body>
+</html>

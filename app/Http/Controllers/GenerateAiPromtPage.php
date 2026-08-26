@@ -3,21 +3,51 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\PreferenceFormRequest;
-use App\Models\Workspaces;
-use App\Services\GeneratePromptServices;
+use App\Jobs\GenerateWebsiteJob;
+use App\Models\Project;
+use App\Models\Workspace;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class GenerateAiPromtPage extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return Inertia::render('GenerateAiPrompt/Index');
+        $workspaceId = $request->query('workspace_id');
+        $workspace = null;
+
+        if ($workspaceId) {
+            $workspace = Workspace::where('id', $workspaceId)
+                ->where('user_id', auth()->id())
+                ->first();
+        } else {
+            $workspace = Workspace::where('user_id', auth()->id())
+                ->orderBy('created_at', 'desc')
+                ->first();
+        }
+
+        if (! $workspace) {
+            return redirect()->route('dashboard')->with('error', 'Please create a workspace first before generating a project.');
+        }
+
+        return Inertia::render('GenerateAiPrompt/Index', [
+            'workspace_id' => $workspace?->id,
+            'workspace_name' => $workspace?->name,
+        ]);
     }
 
     public function showProject()
     {
-        $data = Workspaces::select('id', 'project_name', 'status', 'project_url', 'created_at')
+        if (! auth()->user()) {
+            abort(401);
+        }
+
+        if (auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin')) {
+            return redirect()->route('admin.projects.index');
+        }
+
+        $data = Project::select('id', 'workspace_id', 'project_name', 'status', 'project_url', 'created_at')
             ->where('user_id', Auth::user()->id)
             ->get();
 
@@ -26,18 +56,47 @@ class GenerateAiPromtPage extends Controller
         ]);
     }
 
-    public function generatePrompt(PreferenceFormRequest $request, GeneratePromptServices $generatePromptServices)
+    public function show(Project $project)
     {
-        // Validate the request data
+        if ($project->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        return Inertia::render('Project/Show', [
+            'project' => $project,
+        ]);
+    }
+
+    public function generatePrompt(PreferenceFormRequest $request)
+    {
         $data = $request->validated();
 
-        // Generate the prompt using the service (saves to DB internally)
-        $generatePromptServices->generatePrompt($data);
+        $project = Project::create([
+            'workspace_id' => $data['workspace_id'],
+            'user_id' => auth()->id(),
+            'project_name' => $data['project_name'] ?? 'Untitled',
+            'preferences' => $data['preferences'] ?? [],
+            'status' => 'pending',
+        ]);
 
-        // Do not return the prompt to the user, as it is admin-only.
+        GenerateWebsiteJob::dispatch($project);
+
         return response()->json([
             'success' => true,
-            'message' => 'Your preferences have been successfully submitted and are waiting for admin review!',
+            'project_id' => $project->id,
+            'message' => 'Your website is being generated!',
+        ]);
+    }
+
+    public function checkStatus(Project $project)
+    {
+        if ($project->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        return response()->json([
+            'status' => $project->status,
+            'html_content' => $project->status === 'completed' ? $project->html_content : null,
         ]);
     }
 }
