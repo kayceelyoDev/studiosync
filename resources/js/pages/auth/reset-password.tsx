@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { useState } from 'react';
+import PasswordRules from '@/components/password-rules';
 import { update } from '@/routes/password';
 
 type Props = {
@@ -14,6 +16,8 @@ type Props = {
 };
 
 export default function ResetPassword({ token, email, passwordRules }: Props) {
+    const [password, setPassword] = useState('');
+
     return (
         <>
             <Head title="Reset password" />
@@ -52,8 +56,10 @@ export default function ResetPassword({ token, email, passwordRules }: Props) {
                                 autoFocus
                                 placeholder="Password"
                                 passwordrules={passwordRules}
+                                onChange={(e) => setPassword(e.target.value)}
                             />
                             <InputError message={errors.password} />
+                            <PasswordRules password={password} className="mt-2" />
                         </div>
 
                         <div className="grid gap-2">

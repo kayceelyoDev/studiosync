@@ -50,8 +50,8 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                                 size="sm"
                                 variant="ghost"
                                 asChild
-                                className={cn('w-full justify-start text-zinc-500 hover:bg-green-50 hover:text-green-700 hover:font-medium', {
-                                    'bg-green-50 text-green-700 font-medium': isCurrentOrParentUrl(item.href),
+                                className={cn('w-full justify-start text-muted-foreground hover:bg-green-50 hover:text-green-700 hover:font-medium dark:text-zinc-400 dark:hover:bg-green-900/20 dark:hover:text-green-400', {
+                                    'bg-green-50 text-green-700 font-medium dark:bg-green-900/20 dark:text-green-400': isCurrentOrParentUrl(item.href),
                                 })}
                             >
                                 <Link href={item.href}>

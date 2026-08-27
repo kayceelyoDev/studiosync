@@ -20,11 +20,11 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: any }) {
 
                 <div className="flex items-center justify-between">
                     <div>
-                        <Link href="/admin/workspaces" className="text-sm text-zinc-500 hover:text-zinc-900 mb-2 inline-block">
+                        <Link href="/admin/workspaces" className="text-sm text-muted-foreground hover:text-foreground mb-2 inline-block">
                             &larr; Back to all requests
                         </Link>
                         <h1 className="text-2xl font-semibold tracking-tight">Review: {workspace.project_name}</h1>
-                        <p className="text-sm text-zinc-500 mt-1">Requested by {workspace.user?.name} ({workspace.user?.email})</p>
+                        <p className="text-sm text-muted-foreground mt-1">Requested by {workspace.user?.name} ({workspace.user?.email})</p>
                     </div>
                 </div>
 
@@ -32,16 +32,16 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: any }) {
 
                     {/* Right Column: Admin Actions */}
                     <div className="lg:col-span-2">
-                        <form onSubmit={submit} className="bg-white rounded-xl border border-zinc-200 shadow-sm p-6 space-y-6">
-                            <h2 className="text-lg font-medium text-zinc-900">Manage Request</h2>
+                        <form onSubmit={submit} className="bg-white rounded-xl border border-border shadow-sm p-6 space-y-6">
+                            <h2 className="text-lg font-medium text-foreground">Manage Request</h2>
 
                             <div>
-                                <label htmlFor="status" className="block text-sm font-medium text-zinc-700 mb-1">Status</label>
+                                <label htmlFor="status" className="block text-sm font-medium text-foreground mb-1">Status</label>
                                 <select
                                     id="status"
                                     value={data.status}
                                     onChange={(e) => setData('status', e.target.value)}
-                                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950"
+                                    className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950"
                                 >
                                     <option value="pending">Pending</option>
                                     <option value="in_progress">In Progress</option>
@@ -51,7 +51,7 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: any }) {
                             </div>
 
                             <div>
-                                <label htmlFor="generated_prompt" className="block text-sm font-medium text-zinc-700 mb-1">
+                                <label htmlFor="generated_prompt" className="block text-sm font-medium text-foreground mb-1">
                                     Generated Prompt (Admin View)
                                 </label>
                                 <textarea
@@ -59,14 +59,14 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: any }) {
                                     value={data.generated_prompt}
                                     onChange={(e) => setData('generated_prompt', e.target.value)}
                                     rows={10}
-                                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 font-mono"
+                                    className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 font-mono"
                                     placeholder="The AI generated prompt will appear here. You can edit it before passing it to the builder."
                                 />
                                 {errors.generated_prompt && <div className="text-red-500 text-xs mt-1">{errors.generated_prompt}</div>}
                             </div>
 
                             <div>
-                                <label htmlFor="project_url" className="block text-sm font-medium text-zinc-700 mb-1">
+                                <label htmlFor="project_url" className="block text-sm font-medium text-foreground mb-1">
                                     Deployed Project URL
                                 </label>
                                 <input
@@ -74,7 +74,7 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: any }) {
                                     type="url"
                                     value={data.project_url}
                                     onChange={(e) => setData('project_url', e.target.value)}
-                                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950"
+                                    className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950"
                                     placeholder="https://client-project.com"
                                 />
                                 {errors.project_url && <div className="text-red-500 text-xs mt-1">{errors.project_url}</div>}

@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/react';
 import { ChevronLeft, MonitorSmartphone, Code, FileText, RefreshCw } from 'lucide-react';
 
 export default function ProjectShow({ project }) {
-    const [viewMode, setViewMode] = useState<'details' | 'code' | 'preview'>('details');
+    const [viewMode, setViewMode] = useState<'details' | 'code'>('details');
 
     const renderStatusBadge = (status: string) => {
         switch (status) {
@@ -16,7 +16,7 @@ export default function ProjectShow({ project }) {
             case 'failed':
                 return <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>;
             default:
-                return <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800">{status}</span>;
+                return <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent text-foreground">{status}</span>;
         }
     };
 
@@ -32,7 +32,7 @@ export default function ProjectShow({ project }) {
                     <div className="flex items-start sm:items-center gap-4">
                         <Link 
                             href="/dashboard" 
-                            className="shrink-0 flex items-center justify-center w-10 h-10 transition-colors bg-white border rounded-full shadow-sm text-muted-foreground hover:text-foreground hover:bg-zinc-50 border-border"
+                            className="shrink-0 flex items-center justify-center w-10 h-10 transition-colors bg-background border rounded-full shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted border-border"
                         >
                             <ChevronLeft className="w-5 h-5" />
                         </Link>
@@ -53,21 +53,27 @@ export default function ProjectShow({ project }) {
 
                     <div className="flex items-center gap-2 sm:gap-3">
                         <button
-                            onClick={() => setViewMode('preview')}
-                            className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm ${viewMode === 'preview' ? 'bg-zinc-100 text-zinc-900 border-zinc-200' : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50'}`}
+                            onClick={() => {
+                                if (project.html_content) {
+                                    const blob = new Blob([project.html_content], { type: 'text/html' });
+                                    const url = URL.createObjectURL(blob);
+                                    window.open(url, '_blank');
+                                }
+                            }}
+                            className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm bg-background text-muted-foreground border-border hover:bg-muted"
                         >
                             <MonitorSmartphone className="w-4 h-4 mr-2" /> Preview
                         </button>
                         <button
                             onClick={() => setViewMode('details')}
-                            className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm ${viewMode === 'details' ? 'bg-zinc-100 text-zinc-900 border-zinc-200' : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50'}`}
+                            className={`flex-1 sm:flex-none flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm ${viewMode === 'details' ? 'bg-accent text-accent-foreground border-border' : 'bg-background text-muted-foreground border-border hover:bg-muted'}`}
                         >
                             <FileText className="w-4 h-4 mr-2" /> Details
                         </button>
                         {project.html_content && (
                             <button
                                 onClick={() => setViewMode('code')}
-                                className={`flex-none flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm ${viewMode === 'code' ? 'bg-zinc-100 text-zinc-900 border-zinc-200' : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50'}`}
+                                className={`flex-none flex items-center justify-center px-4 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm ${viewMode === 'code' ? 'bg-accent text-accent-foreground border-border' : 'bg-background text-muted-foreground border-border hover:bg-muted'}`}
                             >
                                 <Code className="w-4 h-4 mr-2 hidden sm:block" /> Code
                             </button>
@@ -78,7 +84,7 @@ export default function ProjectShow({ project }) {
                 {/* Main Content Area */}
                 <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex-1 flex flex-col mt-4 min-h-[500px]">
                     {viewMode === 'details' && (
-                        <div className="p-4 sm:p-8 bg-white flex-1 overflow-auto">
+                        <div className="p-4 sm:p-8 bg-card flex-1 overflow-auto">
                             <h2 className="text-xl font-semibold mb-6">Project Preferences</h2>
                             
                             {project.preferences && Array.isArray(project.preferences) && project.preferences.length > 0 ? (
@@ -122,7 +128,7 @@ export default function ProjectShow({ project }) {
                                     <code>{project.html_content}</code>
                                 </pre>
                             ) : (
-                                <div className="flex items-center justify-center h-full text-zinc-500">
+                                <div className="flex items-center justify-center h-full text-muted-foreground">
                                     No code available yet.
                                 </div>
                             )}

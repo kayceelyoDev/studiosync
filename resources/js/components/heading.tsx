@@ -12,14 +12,14 @@ export default function Heading({
             <h2
                 className={
                     variant === 'small'
-                        ? 'mb-0.5 text-base font-medium text-zinc-900'
-                        : 'text-xl font-semibold tracking-tight text-zinc-900'
+                        ? 'mb-0.5 text-base font-medium text-foreground'
+                        : 'text-xl font-semibold tracking-tight text-foreground'
                 }
             >
                 {title}
             </h2>
             {description && (
-                <p className="text-sm text-zinc-500">{description}</p>
+                <p className="text-sm text-muted-foreground">{description}</p>
             )}
         </header>
     );

@@ -9,11 +9,16 @@ import { Spinner } from '@/components/ui/spinner';
 import { login } from '@/routes';
 import { store } from '@/routes/register';
 
+import { useState } from 'react';
+import PasswordRules from '@/components/password-rules';
+
 type Props = {
     passwordRules: string;
 };
 
 export default function Register({ passwordRules }: Props) {
+    const [password, setPassword] = useState('');
+
     return (
         <>
             <Head title="Register" />
@@ -68,8 +73,10 @@ export default function Register({ passwordRules }: Props) {
                                     name="password"
                                     placeholder="Password"
                                     passwordrules={passwordRules}
+                                    onChange={(e) => setPassword(e.target.value)}
                                 />
                                 <InputError message={errors.password} />
+                                <PasswordRules password={password} className="mt-2" />
                             </div>
 
                             <div className="grid gap-2">
@@ -101,7 +108,7 @@ export default function Register({ passwordRules }: Props) {
                             </Button>
                         </div>
 
-                        <div className="text-center text-sm text-zinc-500">
+                        <div className="text-center text-sm text-muted-foreground">
                             Already have an account?{' '}
                             <TextLink href={login()} tabIndex={6}>
                                 Log in

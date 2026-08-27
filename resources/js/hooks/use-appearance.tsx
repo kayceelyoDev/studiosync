@@ -38,7 +38,15 @@ const getStoredAppearance = (): Appearance => {
 };
 
 const isDarkMode = (appearance: Appearance): boolean => {
-    return false; // Force light mode to maintain the uniform Modern Studio Minimalist theme
+    if (appearance === 'dark') {
+        return true;
+    }
+
+    if (appearance === 'system') {
+        return prefersDark();
+    }
+
+    return false;
 };
 
 const applyTheme = (appearance: Appearance): void => {

@@ -206,7 +206,7 @@ PROMPT;
             foreach ($cards as $card) {
                 if ($card instanceof \DOMElement) {
                     $classes = $card->getAttribute('class');
-                    if (!str_contains($classes, 'h-full')) {
+                    if (! str_contains($classes, 'h-full')) {
                         $card->setAttribute('class', trim("$classes h-full flex flex-col justify-between"));
                     }
                 }
@@ -245,7 +245,7 @@ PROMPT;
 
         // Adapt FULL PAGE layout instructions for COMPONENT MODE
         if ($layout === 'Bento Box UI') {
-            $layoutInstructions = "BENTO BOX UI: You are generating ONE component for a Bento Box grid. The master grid wrapper is ALREADY PROVIDED by the system (`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4`). DO NOT generate the master grid container. Just generate your section as a single card (`data-bento-card`) or a `class=\"contents\"` wrapper containing multiple `data-bento-card` sibling elements. Keep backgrounds subtle (`bg-white/5` or `bg-neutral-100` depending on theme). CRITICAL: If a card contains significant text, you MUST add `md:col-span-2` or `lg:col-span-2` to the card. CRITICAL: You MUST add `h-full flex flex-col` to EVERY `data-bento-card` so the card background stretches to fill the CSS grid cell height perfectly! Do not leave empty space below the card background.";
+            $layoutInstructions = 'BENTO BOX UI: You are generating ONE component for a Bento Box grid. The master grid wrapper is ALREADY PROVIDED by the system (`grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4`). DO NOT generate the master grid container. Just generate your section as a single card (`data-bento-card`) or a `class="contents"` wrapper containing multiple `data-bento-card` sibling elements. Keep backgrounds subtle (`bg-white/5` or `bg-neutral-100` depending on theme). CRITICAL: If a card contains significant text, you MUST add `md:col-span-2` or `lg:col-span-2` to the card. CRITICAL: You MUST add `h-full flex flex-col` to EVERY `data-bento-card` so the card background stretches to fill the CSS grid cell height perfectly! Do not leave empty space below the card background.';
         } elseif ($layout === 'Grid/Masonry Focus' && $section['type'] !== 'portfolio' && $section['type'] !== 'gallery') {
             $layoutInstructions = "GRID/MASONRY FOCUS: The portfolio/gallery will be the main grid. For this {$section['type']} section, keep it minimal and standard so it doesn't compete with the gallery.";
         }
@@ -935,18 +935,18 @@ PROMPT;
     private function assertRenderableHtml(string $html): void
     {
         if (! str_starts_with(strtolower(ltrim($html)), '<!doctype html>')) {
-            \Illuminate\Support\Facades\Log::warning('assertRenderableHtml failed: not a complete HTML document.');
+            Log::warning('assertRenderableHtml failed: not a complete HTML document.');
             throw new \RuntimeException('Generated output is not a complete HTML document.');
         }
 
         if (preg_match('/\{\s*\[.*?\]\s*\.map\s*\(|\{\s*[a-z_$][\w$]*\s*=>/', $html)
             || preg_match('/<\/?[A-Z][A-Za-z0-9]*\b/', $html)) {
-            \Illuminate\Support\Facades\Log::warning('assertRenderableHtml failed: React/template source detected.');
+            Log::warning('assertRenderableHtml failed: React/template source detected.');
             throw new \RuntimeException('Generated output contains React or template source instead of rendered HTML.');
         }
 
         if (preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}]/u', $html)) {
-            \Illuminate\Support\Facades\Log::warning('assertRenderableHtml failed: Emoji detected.');
+            Log::warning('assertRenderableHtml failed: Emoji detected.');
             throw new \RuntimeException('Generated output contains emoji characters instead of SVG icons.');
         }
     }
@@ -1123,6 +1123,7 @@ STYLE;
                 if (str_contains($matches[1], 'menu-toggle') || str_contains($matches[1], 'mobile-menu')) {
                     return '';
                 }
+
                 return $matches[0];
             },
             $html

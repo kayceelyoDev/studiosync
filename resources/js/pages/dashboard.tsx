@@ -14,12 +14,12 @@ export default function Dashboard({ workspaces }: { workspaces: Workspace[] }) {
     return (
         <>
             <Head title="Dashboard" />
-            <div className="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-6 bg-background">
-                <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">My Workspaces</h1>
+            <div className="flex h-full flex-1 flex-col gap-4 sm:gap-6 overflow-x-auto rounded-xl p-4 sm:p-6 bg-background">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">My Workspaces</h1>
                     <Link 
                         href="/workspaces/create"
-                        className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
+                        className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2 w-full sm:w-auto"
                     >
                         <Plus className="w-4 h-4 mr-2" />
                         New Workspace
@@ -29,7 +29,7 @@ export default function Dashboard({ workspaces }: { workspaces: Workspace[] }) {
                 {workspaces && workspaces.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {workspaces.map((workspace) => (
-                            <div key={workspace.id} className="flex flex-col p-6 bg-card rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow group">
+                            <div key={workspace.id} className="flex flex-col p-4 sm:p-6 bg-card rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow group">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex items-center">
                                         <div className="p-2 bg-primary/10 text-primary rounded-lg mr-3">
@@ -59,7 +59,7 @@ export default function Dashboard({ workspaces }: { workspaces: Workspace[] }) {
                         ))}
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center p-12 bg-card rounded-xl border border-border border-dashed shadow-sm">
+                    <div className="flex flex-col items-center justify-center p-6 sm:p-12 bg-card rounded-xl border border-border border-dashed shadow-sm">
                         <div className="h-16 w-16 text-muted-foreground mb-4 bg-muted rounded-full flex items-center justify-center">
                             <Folder className="w-8 h-8" />
                         </div>

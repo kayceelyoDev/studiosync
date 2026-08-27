@@ -112,7 +112,7 @@ export default function TwoFactorChallenge() {
                                 Continue
                             </Button>
 
-                            <div className="text-center text-sm text-zinc-500">
+                            <div className="text-center text-sm text-muted-foreground">
                                 <span>or you can </span>
                                 <button
                                     type="button"

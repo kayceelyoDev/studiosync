@@ -9,7 +9,7 @@ export default function Welcome() {
     return (
         <>
             <Head title="Welcome" />
-            <div className="flex min-h-screen flex-col bg-white text-zinc-900">
+            <div className="flex min-h-screen flex-col bg-white text-foreground">
                 <header className="absolute inset-x-0 top-0 z-50">
                     <nav className="flex items-center justify-between p-6 lg:px-8" aria-label="Global">
                         <div className="flex lg:flex-1">
@@ -21,7 +21,7 @@ export default function Welcome() {
                             {auth.user ? (
                                 <Link
                                     href={dashboard()}
-                                    className="text-sm font-medium text-zinc-900 hover:text-green-600 transition-colors"
+                                    className="text-sm font-medium text-foreground hover:text-green-600 transition-colors"
                                 >
                                     Dashboard &rarr;
                                 </Link>
@@ -29,7 +29,7 @@ export default function Welcome() {
                                 <>
                                     <Link
                                         href={login()}
-                                        className="text-sm font-medium text-zinc-500 hover:text-zinc-900 transition-colors"
+                                        className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                                     >
                                         Log in
                                     </Link>
@@ -49,7 +49,7 @@ export default function Welcome() {
                 <main className="flex-grow flex items-center justify-center relative isolate px-6 pt-14 lg:px-8">
                     <div className="mx-auto max-w-2xl py-32 sm:py-48 lg:py-56 text-center">
                         <div className="mb-8 flex justify-center">
-                            <div className="relative rounded-full px-3 py-1 text-sm leading-6 text-zinc-500 ring-1 ring-zinc-200 hover:ring-zinc-300">
+                            <div className="relative rounded-full px-3 py-1 text-sm leading-6 text-muted-foreground ring-1 ring-zinc-200 hover:ring-zinc-300">
                                 Announcing our next-gen asset manager.{' '}
                                 <a href="#" className="font-semibold text-green-600">
                                     <span className="absolute inset-0" aria-hidden="true" />
@@ -57,10 +57,10 @@ export default function Welcome() {
                                 </a>
                             </div>
                         </div>
-                        <h1 className="text-4xl font-bold tracking-tight text-zinc-900 sm:text-6xl">
+                        <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-6xl">
                             The ultimate toolkit for visual creators.
                         </h1>
-                        <p className="mt-6 text-lg leading-8 text-zinc-500">
+                        <p className="mt-6 text-lg leading-8 text-muted-foreground">
                             Streamline your photography and videography workflows. From seamless client galleries to advanced contract management, StudioSync gives you everything you need to run your creative business.
                         </p>
                         <div className="mt-10 flex items-center justify-center gap-x-6">
@@ -69,7 +69,7 @@ export default function Welcome() {
                                     Get started
                                 </Button>
                             </Link>
-                            <a href="#" className="text-sm font-semibold leading-6 text-zinc-900 hover:text-green-600 transition-colors">
+                            <a href="#" className="text-sm font-semibold leading-6 text-foreground hover:text-green-600 transition-colors">
                                 View demo <span aria-hidden="true">→</span>
                             </a>
                         </div>
