@@ -4,19 +4,22 @@ namespace App\Ai\Agents;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\Types\Type;
-use Laravel\Ai\Attributes\Model;
-use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
-use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Stringable;
 
-#[Provider(Lab::Gemini)]
-#[Model('gemini-3.1-flash-lite')]
 class WebsiteSpecArchitect implements Agent, HasStructuredOutput
 {
     use Promptable;
+
+    public function provider(): array
+    {
+        return [
+            'gemini' => 'gemini-3.5-flash-lite',
+            'gemini-fallback' => 'gemini-3.1-flash-lite',
+        ];
+    }
 
     public function instructions(): Stringable|string
     {

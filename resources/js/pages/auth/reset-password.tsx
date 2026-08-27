@@ -1,23 +1,18 @@
-import { Form, Head } from '@inertiajs/react';
+﻿import { Form, Head } from '@inertiajs/react';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { useState } from 'react';
-import PasswordRules from '@/components/password-rules';
 import { update } from '@/routes/password';
 
 type Props = {
     token: string;
     email: string;
-    passwordRules: string;
 };
 
-export default function ResetPassword({ token, email, passwordRules }: Props) {
-    const [password, setPassword] = useState('');
-
+export default function ResetPassword({ token, email }: Props) {
     return (
         <>
             <Head title="Reset password" />
@@ -55,11 +50,8 @@ export default function ResetPassword({ token, email, passwordRules }: Props) {
                                 className="mt-1 block w-full"
                                 autoFocus
                                 placeholder="Password"
-                                passwordrules={passwordRules}
-                                onChange={(e) => setPassword(e.target.value)}
                             />
                             <InputError message={errors.password} />
-                            <PasswordRules password={password} className="mt-2" />
                         </div>
 
                         <div className="grid gap-2">
@@ -72,7 +64,6 @@ export default function ResetPassword({ token, email, passwordRules }: Props) {
                                 autoComplete="new-password"
                                 className="mt-1 block w-full"
                                 placeholder="Confirm password"
-                                passwordrules={passwordRules}
                             />
                             <InputError
                                 message={errors.password_confirmation}

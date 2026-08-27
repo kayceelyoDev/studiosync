@@ -104,6 +104,12 @@ return [
             'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/'),
         ],
 
+        'gemini-fallback' => [
+            'driver' => 'gemini',
+            'key' => env('GEMINI_API_KEY'),
+            'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/'),
+        ],
+
         'groq' => [
             'driver' => 'groq',
             'key' => env('GROQ_API_KEY'),

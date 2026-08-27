@@ -1,5 +1,5 @@
-import { Form, Head } from '@inertiajs/react';
-import { useState, useRef } from 'react';
+﻿import { Form, Head } from '@inertiajs/react';
+import { useRef } from 'react';
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -11,17 +11,12 @@ import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
-import PasswordRules from '@/components/password-rules';
 
-type Props = {
-    passwordRules: string;
-} & ManagePasskeysProps &
-    ManageTwoFactorProps;
+type Props = ManagePasskeysProps & ManageTwoFactorProps;
 
 export default function Security(props: Props) {
     const passwordInput = useRef<HTMLInputElement>(null);
     const currentPasswordInput = useRef<HTMLInputElement>(null);
-    const [password, setPassword] = useState('');
 
     return (
         <>
@@ -33,7 +28,7 @@ export default function Security(props: Props) {
                 <Heading
                     variant="small"
                     title="Update password"
-                    description="Ensure your account is using a long, random password to stay secure"
+                    description="Ensure your account is using a secure password"
                 />
 
                 <Form
@@ -87,12 +82,9 @@ export default function Security(props: Props) {
                                     className="mt-1 block w-full"
                                     autoComplete="new-password"
                                     placeholder="New password"
-                                    passwordrules={props.passwordRules}
-                                    onChange={(e) => setPassword(e.target.value)}
                                 />
 
                                 <InputError message={errors.password} />
-                                <PasswordRules password={password} className="mt-2" />
                             </div>
 
                             <div className="grid gap-2">
@@ -106,7 +98,6 @@ export default function Security(props: Props) {
                                     className="mt-1 block w-full"
                                     autoComplete="new-password"
                                     placeholder="Confirm password"
-                                    passwordrules={props.passwordRules}
                                 />
 
                                 <InputError

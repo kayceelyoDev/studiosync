@@ -1,4 +1,4 @@
-import { Form, Head } from '@inertiajs/react';
+﻿import { Form, Head } from '@inertiajs/react';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import TextLink from '@/components/text-link';
@@ -9,16 +9,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { login } from '@/routes';
 import { store } from '@/routes/register';
 
-import { useState } from 'react';
-import PasswordRules from '@/components/password-rules';
-
 type Props = {
     passwordRules: string;
 };
 
 export default function Register({ passwordRules }: Props) {
-    const [password, setPassword] = useState('');
-
     return (
         <>
             <Head title="Register" />
@@ -72,11 +67,8 @@ export default function Register({ passwordRules }: Props) {
                                     autoComplete="new-password"
                                     name="password"
                                     placeholder="Password"
-                                    passwordrules={passwordRules}
-                                    onChange={(e) => setPassword(e.target.value)}
                                 />
                                 <InputError message={errors.password} />
-                                <PasswordRules password={password} className="mt-2" />
                             </div>
 
                             <div className="grid gap-2">
@@ -90,7 +82,6 @@ export default function Register({ passwordRules }: Props) {
                                     autoComplete="new-password"
                                     name="password_confirmation"
                                     placeholder="Confirm password"
-                                    passwordrules={passwordRules}
                                 />
                                 <InputError
                                     message={errors.password_confirmation}

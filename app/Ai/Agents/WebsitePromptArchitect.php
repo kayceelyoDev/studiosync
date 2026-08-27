@@ -2,22 +2,25 @@
 
 namespace App\Ai\Agents;
 
-use Laravel\Ai\Attributes\Model;
-use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Contracts\Tool;
-use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
 use Stringable;
 
-#[Provider(Lab::Gemini)]
-#[Model('gemini-3.1-flash-lite')]
 class WebsitePromptArchitect implements Agent, Conversational, HasTools
 {
     use Promptable;
+
+    public function provider(): array
+    {
+        return [
+            'gemini' => 'gemini-3.5-flash-lite',
+            'gemini-fallback' => 'gemini-3.1-flash-lite',
+        ];
+    }
 
     public function instructions(): Stringable|string
     {
