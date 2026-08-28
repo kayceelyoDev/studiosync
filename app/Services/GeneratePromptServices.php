@@ -158,7 +158,7 @@ PROMPT;
      * @param  array<string, mixed>  $spec
      * @param  array<string, string>  $parsed
      */
-    private function generateSection(array $section, array $spec, array $parsed): string
+    public function generateSection(array $section, array $spec, array $parsed): string
     {
         $prompt = $this->buildSectionPrompt($section, $spec, $parsed);
         $response = (new WebpageGenerator)->prompt($prompt);
@@ -451,7 +451,7 @@ PROMPT;
      * @param  array<string, mixed>  $spec
      * @param  array<string, string>  $parsed
      */
-    private function assembleSections(array $sectionHtmlParts, array $spec, array $parsed, string $projectName): string
+    public function assembleSections(array $sectionHtmlParts, array $spec, array $parsed, string $projectName): string
     {
         $theme = $spec['theme'];
         $layout = $theme['layoutStyle'] ?? '';
@@ -641,7 +641,7 @@ BODY;
      * @param  array{colorRoles: array<string, string>, typeScale: string, layoutStyle: string}  $theme
      * @return array{passed: bool, errors: list<string>}
      */
-    private function validateSection(string $html, array $section, array $theme): array
+    public function validateSection(string $html, array $section, array $theme): array
     {
         $errors = [];
 
@@ -688,7 +688,7 @@ BODY;
      * @param  array{id: string, type: string, priority: int}  $section
      * @param  array<string, mixed>  $spec
      */
-    private function repairSection(string $html, array $errors, array $section, array $spec): string
+    public function repairSection(string $html, array $errors, array $section, array $spec): string
     {
         $theme = $spec['theme'];
         $colorRoles = $theme['colorRoles'];
@@ -887,7 +887,7 @@ PROMPT;
     // Save / Post-Process (unchanged)
     // =========================================================================
 
-    private function saveWithLayoutRepair(Project $project, string $html, array $parsed): void
+    public function saveWithLayoutRepair(Project $project, string $html, array $parsed): void
     {
         try {
             $this->processAndSave($project, $html);
