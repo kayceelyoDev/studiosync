@@ -267,11 +267,15 @@ MOBILE NAVIGATION PATTERN (MANDATORY):
 - Use exactly this SVG for the hamburger: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>`
 - Do NOT add <script> tags — the toggle script is added at assembly time.
 - Do NOT use "hidden", "display:none", or "invisible" on the mobile menu.
-- CRITICAL: Your navigation menu MUST contain links to ALL of these sections: {$allSectionIds}. Do not skip any primary sections!
+- CRITICAL: Your navigation menu MUST contain links to the relevant primary sections on the page. Use these section IDs as your href targets: {$allSectionIds}. 
+- SUPER CRITICAL: Do NOT create links to structural sections like "nav", "hero", "footer", or "header". ONLY link to content sections (e.g. About, Portfolio, Services, Pricing, Blog, Contact).
 NAV;
+        } else {
+            $navRules = "\nCRITICAL: DO NOT INCLUDE A NAVIGATION BAR OR HEADER in this section. A global site navigation has already been generated separately. Start directly with the {$section['type']} content.";
         }
-
-        $allSectionIds = implode(', ', array_column($spec['sections'], 'id'));
+        $contentSectionIds = implode(', ', array_filter(array_column($spec['sections'], 'id'), function($id) {
+            return !in_array($id, ['nav', 'hero', 'header', 'footer']);
+        }));
 
         return <<<PROMPT
 Generate a single "{$section['type']}" section component for a "{$spec['siteType']}" website.
@@ -312,10 +316,11 @@ ENHANCED DESIGN PATTERNS:
 - Use advanced Tailwind classes for a premium look: `backdrop-blur-sm`, `bg-opacity`, subtle gradients, or `ring` for focus states.
 - Include rich interactive states: `transition-all duration-300 hover:-translate-y-1 hover:shadow-xl` on interactive cards/buttons. Use `group-hover:scale-105` on images inside cards.
 - Scroll Animations: Add `data-aos="fade-up"` (or fade-right/fade-left/zoom-in) to main elements inside the section so they animate on scroll. Use `data-aos-delay="100"` for staggered elements.
-- Working Buttons: All navigation buttons and links MUST use `<a href="#target-id">` tags referencing other sections (Available: {$allSectionIds}). DO NOT use `<button onclick="...">` for navigation. Smooth scrolling is handled globally.
+- Working Buttons: All navigation buttons and links MUST use `<a href="#target-id">` tags referencing content sections (Available: {$contentSectionIds}). DO NOT use `<button onclick="...">` for navigation. Smooth scrolling is handled globally.
 - Create deep visual hierarchy: Use varied font weights, text opacities (`text-opacity-80` on body), uppercase kickers (`tracking-widest text-sm`), and subtle borders.
 - Elevate components: Don't write "basic" HTML. Add micro-layouts like badges, decorative accent lines, grid-within-flex, or staggered layouts to match high-end Figma designs.
 - Style images beautifully: `object-cover rounded-2xl shadow-md`.
+- Ensure high contrast: When using Primary or Secondary colors for backgrounds (like buttons or feature cards), ensure the text inside uses a high-contrast color (e.g. white or very dark depending on the theme) rather than the default text color.
 
 OUTPUT RULES:
 - Return EXACTLY ONE root HTML element: <section id="{$section['id']}" ...>, <nav id="{$section['id']}" ...>, <footer id="{$section['id']}" ...>, etc.
