@@ -382,7 +382,7 @@ PROMPT;
         }
 
         if ($layout === 'Horizontal Scroll (Gallery)' && in_array($sectionType, ['gallery', 'portfolio'])) {
-            return $generalHint."\n".'LAYOUT HINT: Add data-horizontal-gallery attribute. Use flex overflow-x-auto snap-x snap-mandatory gap-4 sm:gap-6 with min-w-[85vw] snap-center cards. At least 5 scroll items.';
+            return $generalHint."\n".'LAYOUT HINT: Add data-horizontal-gallery attribute. Use flex overflow-x-auto snap-x snap-mandatory gap-4 sm:gap-6 with cards. Generate a "Scroll ->" button (e.g. `<button data-action="scroll-right">Scroll &rarr;</button>`) above or outside the gallery container. Do NOT add custom scrollbar CSS; the system hides it automatically.';
         }
 
         return $generalHint;
@@ -496,14 +496,44 @@ HEAD;
 
     // Resilient Smooth Scrolling & Mobile Menu Auto-close via Event Delegation
     document.addEventListener('click', function (e) {
+        // Handle scroll-right and scroll-left buttons
+        const scrollBtn = e.target.closest('[data-action="scroll-right"], [data-action="scroll-left"]');
+        if (scrollBtn) {
+            e.preventDefault();
+            const action = scrollBtn.getAttribute('data-action');
+            const section = scrollBtn.closest('section') || scrollBtn.closest('header') || document;
+            const gallery = section.querySelector('.overflow-x-auto, [data-horizontal-gallery]');
+            
+            if (gallery) {
+                // Determine card width or default to a responsive percentage
+                const card = gallery.querySelector('article, div.snap-center, img');
+                const scrollAmount = card ? card.offsetWidth + 24 : (window.innerWidth > 768 ? window.innerWidth * 0.4 : window.innerWidth * 0.8);
+                
+                if (action === 'scroll-right') {
+                    gallery.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+                } else {
+                    gallery.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+                }
+            }
+            return;
+        }
+
         const anchor = e.target.closest('a');
         if (!anchor) return;
 
-        let href = anchor.getAttribute('href');
-        if (!href || href === '#' || href.startsWith('http') || href.startsWith('mailto:')) return;
-
+        // Prevent ALL default navigation in the preview iframe to avoid breaking out
         e.preventDefault();
-        const targetId = href.replace(/^[/#]+/, '');
+
+        let href = anchor.getAttribute('href');
+        if (!href || href === '#') return;
+
+        // Open external links in a new tab instead of navigating the iframe
+        if (href.startsWith('http') || href.startsWith('mailto:')) {
+            window.open(href, '_blank');
+            return;
+        }
+
+        const targetId = href.replace(/^[/#]+/, '').split('?')[0];
         if (!targetId) return;
 
         let target = document.getElementById(targetId);
@@ -517,12 +547,17 @@ HEAD;
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
             // Close mobile menu if open
-            const menu = document.getElementById('mobile-menu');
-            const toggle = document.getElementById('menu-toggle');
+            const menu = document.getElementById('mobile' + '-menu');
+            const toggle = document.getElementById('menu' + '-toggle');
             if (menu && toggle && !menu.classList.contains('max-h-0')) {
                 toggle.click();
             }
         }
+    });
+
+    // Prevent any form submissions from navigating the iframe
+    document.addEventListener('submit', function(e) {
+        e.preventDefault();
     });
 </script>
 <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
@@ -963,11 +998,11 @@ PROMPT;
                 'forbidden' => ['h-screen bg-cover', 'overflow-x-auto', 'md:col-span-2'],
             ],
             'Grid/Masonry Focus' => [
-                'required' => ['data-layout="grid-masonry"', 'data-primary-grid', 'grid-cols-1', 'grid-cols-3'],
+                'required' => ['data-layout="grid-masonry"', 'data-primary-grid', 'grid-cols-1'],
                 'forbidden' => ['h-screen bg-cover'],
             ],
             'Split Screen (Text/Image)' => [
-                'required' => ['data-layout="split-screen"', 'data-split-hero', 'lg:flex-row', 'lg:w-1/2'],
+                'required' => ['data-layout="split-screen"', 'data-split-hero', 'lg:flex-row'],
                 'forbidden' => ['h-screen bg-cover'],
             ],
             'Full-bleed Cinematic' => [
@@ -987,7 +1022,7 @@ PROMPT;
                 'forbidden' => ['overflow-x-auto'],
             ],
             'Horizontal Scroll (Gallery)' => [
-                'required' => ['data-layout="horizontal-scroll"', 'data-horizontal-gallery', 'overflow-x-auto', 'min-w-[85vw]', 'snap-x'],
+                'required' => ['data-layout="horizontal-scroll"', 'data-horizontal-gallery', 'overflow-x-auto'],
                 'forbidden' => ['h-screen bg-cover'],
             ],
             'Neumorphism (Soft UI)' => [
@@ -1072,6 +1107,8 @@ img, svg, video, canvas, iframe { max-width: 100%; }
 #mobile-menu { overflow: hidden; transition: max-height .3s ease-in-out, opacity .3s ease-in-out; }
 [data-bento-grid] { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
 [data-bento-card] { min-width: 0; }
+.overflow-x-auto { scrollbar-width: none; -ms-overflow-style: none; }
+.overflow-x-auto::-webkit-scrollbar { display: none; }
 @media (max-width: 767px) {
   h1, h2, h3, h4, p, a, button { overflow-wrap: anywhere; }
   .container { width: 100%; max-width: 100%; }

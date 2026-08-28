@@ -1048,6 +1048,7 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                             <iframe 
                                 srcDoc={generatedHtml} 
                                 className="w-full h-full border-none absolute inset-0"
+                                sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                                 title="Generated Website Preview"
                             />
                         </div>

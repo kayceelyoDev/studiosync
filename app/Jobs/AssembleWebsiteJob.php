@@ -48,9 +48,6 @@ class AssembleWebsiteJob implements ShouldQueue
                 }
 
                 $htmlParts[] = $html;
-
-                // Clean up the cache key now that we've consumed it
-                Cache::forget($cacheKey);
             }
 
             // ── Assemble into a full document ──

@@ -117,12 +117,13 @@ ABSOLUTE RULE — HERO-FOCUSED SINGLE PAGE:
 RULE,
             'Horizontal Scroll (Gallery)' => <<<'RULE'
 ABSOLUTE RULE — HORIZONTAL SCROLL (GALLERY):
-- MUST include at least one horizontally scrolling section: `flex overflow-x-auto snap-x snap-mandatory gap-4 sm:gap-6 pb-4 scrollbar-thin`.
+- MUST include at least one horizontally scrolling section: `flex overflow-x-auto snap-x snap-mandatory gap-4 sm:gap-6 pb-4`.
 - Scroll cards: `w-[85vw] sm:w-[60vw] md:w-[45vw] lg:w-[35vw] snap-center flex-shrink-0`. NEVER use fixed pixel widths like `w-[350px]` or `min-w-[350px]`.
 - Each card: image + title + optional caption inside a rounded container.
-- Add visible scroll hint (fade edge gradient or "scroll →" indicator).
+- MUST add a "Scroll ->" button (e.g. `<button data-action="scroll-right">Scroll &rarr;</button>`) above or outside the gallery container. 
 - Wrapper: `overflow-x-auto` on the scroll track, but `overflow-x-hidden` on `<body>` to prevent page-level horizontal scroll.
 - At least 5 scroll items. Write them out explicitly in HTML. DO NOT use `.map()` or React syntax. If portfolio is a static grid with no horizontal scroll, REWRITE it.
+- DO NOT add custom scrollbar CSS (like scrollbar-thin or hidden scrollbar classes); the system hides the scrollbar automatically.
 RULE,
             'Neumorphism (Soft UI)' => <<<'RULE'
 ABSOLUTE RULE — NEUMORPHISM (SOFT UI):
