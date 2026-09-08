@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
-import { ChevronLeft, MonitorSmartphone, Code, FileText, RefreshCw } from 'lucide-react';
+import { ChevronLeft, MonitorSmartphone, Code, FileText, RefreshCw, Edit3 } from 'lucide-react';
 
-export default function ProjectShow({ project }) {
+export default function ProjectShow({ project }: { project: any }) {
     const [viewMode, setViewMode] = useState<'details' | 'code'>('details');
 
     const renderStatusBadge = (status: string) => {
@@ -52,6 +52,14 @@ export default function ProjectShow({ project }) {
                     </div>
 
                     <div className="flex items-center gap-2 sm:gap-3">
+                        {project.html_content && (
+                            <Link
+                                href={`/projects/${project.id}/edit`}
+                                className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 text-sm font-semibold transition-all rounded-md shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
+                            >
+                                <Edit3 className="w-4 h-4 mr-2" /> Edit Page
+                            </Link>
+                        )}
                         <button
                             onClick={() => {
                                 if (project.html_content) {

@@ -22,6 +22,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/generate-prompt', [GenerateAiPromtPage::class, 'generatePrompt'])->name('generate-prompt.store');
     Route::get('/projects/{project}/status', [GenerateAiPromtPage::class, 'checkStatus'])->name('projects.status');
     Route::get('/projects/{project}', [GenerateAiPromtPage::class, 'show'])->name('projects.show');
+    Route::get('/projects/{project}/edit', [GenerateAiPromtPage::class, 'edit'])->name('projects.edit');
+    Route::put('/projects/{project}', [GenerateAiPromtPage::class, 'update'])->name('projects.update');
 });
 
 /*

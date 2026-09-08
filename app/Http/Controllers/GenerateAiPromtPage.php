@@ -99,4 +99,41 @@ class GenerateAiPromtPage extends Controller
             'html_content' => $project->status === 'completed' ? $project->html_content : null,
         ]);
     }
+
+    public function edit(Project $project)
+    {
+        if ($project->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $project->load('workspace:id,name');
+
+        return Inertia::render('Project/Edit', [
+            'project' => $project,
+        ]);
+    }
+
+    public function update(Request $request, Project $project)
+    {
+        if ($project->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'html_content' => 'required|string',
+            'project_name' => 'nullable|string|max:255',
+        ]);
+
+        $project->update($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Project saved successfully.',
+                'project' => $project,
+            ]);
+        }
+
+        return back()->with('success', 'Project saved successfully.');
+    }
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, usePage, router } from '@inertiajs/react';
 import { toast } from 'sonner';
-import { CheckCircle2, ChevronRight, ChevronLeft, Sparkles, Check, Loader2, FolderOpen, FolderPlus, FilePlus, Trash2, User, Plus, LayoutTemplate, Palette } from 'lucide-react';
+import { CheckCircle2, ChevronRight, ChevronLeft, Sparkles, Check, Loader2, FolderOpen, FolderPlus, FilePlus, Trash2, User, Plus, LayoutTemplate, Palette, Edit3, ExternalLink } from 'lucide-react';
 
 interface Asset {
     id: string;
@@ -1014,7 +1014,7 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                                     <p className="text-xs text-muted-foreground">Previewing your personalized design</p>
                                 </div>
                             </div>
-                            <div className="flex gap-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
                                 <button
                                     onClick={() => {
                                         setIsSuccess(false);
@@ -1024,11 +1024,13 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                                         setFormData({
                                             project_name: '', description: '', 
                                             content_strategy: [], layout_style: '', color_palette: '', 
-                                            typography: '', extra_details: ''
+                                            typography: '', contact_email: '', contact_phone: '',
+                                            contact_address: '', social_links: [], about_bio: '',
+                                            extra_details: ''
                                         });
                                         setFolders([]);
                                     }}
-                                    className="px-4 py-2 text-sm font-medium transition-colors bg-transparent border rounded-md shadow-sm border-input text-foreground hover:bg-accent hover:text-accent-foreground"
+                                    className="px-3.5 py-2 text-sm font-medium transition-colors bg-transparent border rounded-md shadow-sm border-input text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                 >
                                     Create Another
                                 </button>
@@ -1038,9 +1040,21 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                                         const url = URL.createObjectURL(blob);
                                         window.open(url, '_blank');
                                     }}
-                                    className="px-4 py-2 text-sm font-semibold transition-all rounded-md shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium transition-colors bg-transparent border rounded-md shadow-sm border-input text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                 >
-                                    Open in New Tab
+                                    <ExternalLink className="w-4 h-4" /> Open in New Tab
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (projectId) {
+                                            router.visit(`/projects/${projectId}/edit`);
+                                        } else {
+                                            toast.error("Project ID is missing. Please refresh and try again.");
+                                        }
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-all rounded-md shadow-sm bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                                >
+                                    <Edit3 className="w-4 h-4" /> Edit Page
                                 </button>
                             </div>
                         </div>
