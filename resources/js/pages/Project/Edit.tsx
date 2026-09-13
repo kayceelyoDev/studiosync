@@ -51,9 +51,34 @@ import {
     Tag,
     Smile,
     PanelLeft,
-    PanelRight
+    PanelRight,
+    Folder,
+    FolderOpen,
+    FileImage,
+    AlertTriangle,
+    Search,
+    Edit2,
+    UploadCloud,
+    CheckCircle2,
+    Move,
+    Crop,
+    Maximize2,
+    Minimize2,
+    ZoomIn
 } from 'lucide-react';
 import { IconPickerModal } from '@/components/IconPickerModal';
+
+export interface ProjectAsset {
+    id: number;
+    project_id: number;
+    asset_folder_id?: number | null;
+    name: string;
+    path: string;
+    description?: string | null;
+    url?: string;
+    created_at: string;
+    updated_at: string;
+}
 
 interface Project {
     id: number;
@@ -68,6 +93,7 @@ interface Project {
         id: number;
         name: string;
     };
+    project_assets?: ProjectAsset[];
 }
 
 interface LayerSection {
@@ -114,6 +140,13 @@ interface EditableImage {
     index: number;
     src: string;
     alt: string;
+    objectFit?: 'cover' | 'contain' | 'fill' | 'none';
+    objectPosition?: string;
+    positionX?: number;
+    positionY?: number;
+    height?: string;
+    aspectRatio?: string;
+    scale?: number;
 }
 
 interface EditableCard {
@@ -145,6 +178,14 @@ interface EditableCard {
     buttonIconPosition?: 'left' | 'right';
     imageSrc: string;
     imageAlt: string;
+    imageObjectFit?: 'cover' | 'contain' | 'fill' | 'none';
+    imageObjectPosition?: string;
+    imagePositionX?: number;
+    imagePositionY?: number;
+    imageHeight?: string;
+    imageAspectRatio?: string;
+    imageScale?: number;
+    imagePlacement?: 'top' | 'bottom';
     backgroundColor?: string;
     borderColor?: string;
     color?: string;
@@ -383,7 +424,13 @@ const STOCK_PHOTOS = [
     { label: 'Product Showcase', url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1000&q=80' }
 ];
 
-export default function ProjectEdit({ project }: { project: Project }) {
+export default function ProjectEdit({
+    project,
+    initialAssets = []
+}: {
+    project: Project;
+    initialAssets?: ProjectAsset[];
+}) {
     // Current HTML and Undo/Redo stack
     const [html, setHtml] = useState<string>(project.html_content || '');
     const [iframeSrcDoc, setIframeSrcDoc] = useState<string>(project.html_content || '');
@@ -392,12 +439,66 @@ export default function ProjectEdit({ project }: { project: Project }) {
 
     // Layout & UI states
     const [viewportMode, setViewportMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-    const [activeTab, setActiveTab] = useState<'properties' | 'design'>('properties');
+    const [activeTab, setActiveTab] = useState<'properties' | 'design' | 'assets'>('properties');
     const [viewMode, setViewMode] = useState<'visual' | 'code'>('visual');
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [isDirty, setIsDirty] = useState<boolean>(false);
     const [projectName, setProjectName] = useState<string>(project.project_name || 'Untitled Project');
     const [isRenaming, setIsRenaming] = useState<boolean>(false);
+
+    // Asset Management State (Cloudflare R2)
+    const resolveAssetUrl = useCallback((asset: { url?: string; path?: string } | null | undefined): string => {
+        if (!asset) return '';
+        if (asset.url && asset.url.trim()) return asset.url;
+        if (asset.path && asset.path.trim()) {
+            return `https://pub-627cbf9419a14072a2a8e53fdd266960.r2.dev/${asset.path.replace(/^\/+/, '')}`;
+        }
+        return '';
+    }, []);
+
+    const [assets, setAssets] = useState<ProjectAsset[]>(() => {
+        const rawList = (initialAssets && initialAssets.length > 0)
+            ? initialAssets
+            : (project.project_assets && project.project_assets.length > 0)
+                ? project.project_assets
+                : [];
+        return rawList.map(a => ({
+            ...a,
+            url: a.url || (a.path ? `https://pub-627cbf9419a14072a2a8e53fdd266960.r2.dev/${a.path.replace(/^\/+/, '')}` : '')
+        }));
+    });
+
+    // Synchronize assets when props update
+    useEffect(() => {
+        const rawList = (initialAssets && initialAssets.length > 0)
+            ? initialAssets
+            : (project.project_assets && project.project_assets.length > 0)
+                ? project.project_assets
+                : [];
+        if (rawList.length > 0) {
+            setAssets(rawList.map(a => ({
+                ...a,
+                url: a.url || (a.path ? `https://pub-627cbf9419a14072a2a8e53fdd266960.r2.dev/${a.path.replace(/^\/+/, '')}` : '')
+            })));
+        }
+    }, [initialAssets, project.project_assets]);
+
+    const [isUploadingAsset, setIsUploadingAsset] = useState<boolean>(false);
+    const [isReplacingAsset, setIsReplacingAsset] = useState<boolean>(false);
+    const [assetSearchQuery, setAssetSearchQuery] = useState<string>('');
+    const [editingAsset, setEditingAsset] = useState<ProjectAsset | null>(null);
+    const [assetToReplace, setAssetToReplace] = useState<ProjectAsset | null>(null);
+    const [assetPickerModal, setAssetPickerModal] = useState<{
+        isOpen: boolean;
+        targetType: 'image' | 'card';
+        targetIndex: number;
+    } | null>(null);
+
+    // Asset Input Refs
+    const newAssetFileInputRef = useRef<HTMLInputElement>(null);
+    const replaceAssetFileInputRef = useRef<HTMLInputElement>(null);
+    const directUploadFileInputRef = useRef<HTMLInputElement>(null);
+    const targetDirectUploadRef = useRef<{ type: 'image' | 'card'; index: number } | null>(null);
 
     // Responsive sidebar toggles (layers panel and inspector panel)
     const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(() => {
@@ -442,6 +543,13 @@ export default function ProjectEdit({ project }: { project: Project }) {
 
     // References
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
+    const selectedSectionIdRef = useRef<string | null>(null);
+    useEffect(() => {
+        selectedSectionIdRef.current = selectedSectionId;
+    }, [selectedSectionId]);
+    const handleUpdateCardContentRef = useRef<any>(null);
+    const handleUpdateImageRef = useRef<any>(null);
+    const handleUploadAssetRef = useRef<any>(null);
 
     // Collapsible sidebar section groups (auto-expand on element selection)
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -825,6 +933,46 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     buttonIconPosition: btnIconPos,
                     imageSrc: imgEl ? (imgEl.getAttribute('src') || imgEl.src || '') : '',
                     imageAlt: imgEl?.getAttribute('alt') || '',
+                    imageObjectFit: (() => {
+                        if (!imgEl) return 'cover';
+                        const raw = imgEl.style.objectFit || (imgEl.classList.contains('object-contain') ? 'contain' : imgEl.classList.contains('object-fill') ? 'fill' : imgEl.classList.contains('object-none') ? 'none' : 'cover');
+                        return (['cover', 'contain', 'fill', 'none'].includes(raw) ? raw : 'cover') as any;
+                    })(),
+                    imageObjectPosition: imgEl?.style.objectPosition || '50% 50%',
+                    imagePositionX: (() => {
+                        if (!imgEl) return 50;
+                        const pos = imgEl.style.objectPosition || '';
+                        if (pos) {
+                            const parts = pos.trim().split(/\s+/);
+                            const x = parseFloat(parts[0]);
+                            if (!isNaN(x)) return Math.round(x);
+                        }
+                        if (imgEl.classList.contains('object-left')) return 0;
+                        if (imgEl.classList.contains('object-right')) return 100;
+                        return 50;
+                    })(),
+                    imagePositionY: (() => {
+                        if (!imgEl) return 50;
+                        const pos = imgEl.style.objectPosition || '';
+                        if (pos) {
+                            const parts = pos.trim().split(/\s+/);
+                            if (parts.length >= 2) {
+                                const y = parseFloat(parts[1]);
+                                if (!isNaN(y)) return Math.round(y);
+                            }
+                        }
+                        if (imgEl.classList.contains('object-top')) return 0;
+                        if (imgEl.classList.contains('object-bottom')) return 100;
+                        return 50;
+                    })(),
+                    imageHeight: imgEl?.style.height || '',
+                    imageAspectRatio: imgEl?.style.aspectRatio || '',
+                    imageScale: (() => {
+                        if (!imgEl || !imgEl.style.transform) return 100;
+                        const m = imgEl.style.transform.match(/scale\(([\d.]+)\)/);
+                        return m ? Math.round(parseFloat(m[1]) * 100) : 100;
+                    })(),
+                    imagePlacement: (imgEl && el.firstElementChild === imgEl) ? 'top' : (imgEl && el.lastElementChild === imgEl) ? 'bottom' : 'top',
                     backgroundColor: el.style.backgroundColor || '',
                     borderColor: el.style.borderColor || '',
                     color: el.style.color || ''
@@ -889,11 +1037,37 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             // 5. Standalone Images: img (outside cards)
             const imgEls = Array.from(sectionEl.querySelectorAll('img'))
                 .filter(el => !cardCandidateEls.some(card => card.contains(el)));
-            const images: EditableImage[] = imgEls.map((el, index) => ({
-                index,
-                src: el.getAttribute('src') || el.src || '',
-                alt: el.getAttribute('alt') || ''
-            }));
+            const images: EditableImage[] = imgEls.map((el, index) => {
+                const rawFit = el.style.objectFit || (el.classList.contains('object-contain') ? 'contain' : el.classList.contains('object-fill') ? 'fill' : el.classList.contains('object-none') ? 'none' : 'cover');
+                const objFit = (['cover', 'contain', 'fill', 'none'].includes(rawFit) ? rawFit : 'cover') as any;
+                const posStr = el.style.objectPosition || '50% 50%';
+                let posX = 50;
+                let posY = 50;
+                if (posStr) {
+                    const parts = posStr.trim().split(/\s+/);
+                    const x = parseFloat(parts[0]);
+                    const y = parseFloat(parts[1]);
+                    if (!isNaN(x)) posX = Math.round(x);
+                    if (!isNaN(y)) posY = Math.round(y);
+                }
+                let scale = 100;
+                if (el.style.transform) {
+                    const m = el.style.transform.match(/scale\(([\d.]+)\)/);
+                    if (m) scale = Math.round(parseFloat(m[1]) * 100);
+                }
+                return {
+                    index,
+                    src: el.getAttribute('src') || el.src || '',
+                    alt: el.getAttribute('alt') || '',
+                    objectFit: objFit,
+                    objectPosition: posStr,
+                    positionX: posX,
+                    positionY: posY,
+                    height: el.style.height || '',
+                    aspectRatio: el.style.aspectRatio || '',
+                    scale
+                };
+            });
 
             return {
                 id: selectedSectionId,
@@ -1225,6 +1399,58 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                         grid-template-columns: minmax(0, 1fr) !important;
                     }
                 }
+                /* Figma-style image drag-to-align / pan styles */
+                .__ss-image-panning {
+                    cursor: grabbing !important;
+                    user-select: none !important;
+                }
+                img.__ss-active-element, .__ss-active-card img {
+                    cursor: grab !important;
+                }
+                /* Figma-style card drop zone when dragging images */
+                .__ss-card-drop-target {
+                    outline: 3px dashed #3b82f6 !important;
+                    outline-offset: 3px !important;
+                    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.35) !important;
+                    position: relative !important;
+                }
+                .__ss-card-drop-badge {
+                    position: absolute !important;
+                    transform: translate(-50%, -50%) !important;
+                    background: #2563eb !important;
+                    color: #ffffff !important;
+                    font-size: 12px !important;
+                    font-weight: 700 !important;
+                    padding: 8px 16px !important;
+                    border-radius: 9999px !important;
+                    z-index: 2147483647 !important;
+                    pointer-events: none !important;
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 8px !important;
+                    white-space: nowrap !important;
+                    font-family: ui-sans-serif, system-ui, sans-serif !important;
+                }
+                .__ss-pan-badge {
+                    position: absolute !important;
+                    background: rgba(15, 23, 42, 0.92) !important;
+                    backdrop-filter: blur(8px) !important;
+                    color: #60a5fa !important;
+                    border: 1px solid rgba(59, 130, 246, 0.5) !important;
+                    font-size: 11px !important;
+                    font-weight: 700 !important;
+                    font-family: ui-monospace, monospace !important;
+                    padding: 4px 12px !important;
+                    border-radius: 6px !important;
+                    z-index: 2147483647 !important;
+                    pointer-events: none !important;
+                    box-shadow: 0 6px 16px rgba(0,0,0,0.5) !important;
+                    white-space: nowrap !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                }
             `;
             if (doc.head) {
                 doc.head.appendChild(style);
@@ -1368,8 +1594,24 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             }
         }
 
+        // Interactive Canvas Image Dragging & Repositioning (Figma Pan/Crop Mode)
+        let isMouseDownOnImg = false;
+        let panTargetImg: HTMLImageElement | null = null;
+        let panStartClientX = 0;
+        let panStartClientY = 0;
+        let panStartPosX = 50;
+        let panStartPosY = 50;
+        let hasDraggedImage = false;
+        let panCardIndex = -1;
+        let panStandaloneImgIndex = -1;
+        let panSectionId = '';
+
         // Prevent external link navigation in preview; instead clicking an element selects it and highlights its settings on the right
         const handleClick = (e: MouseEvent) => {
+            if (hasDraggedImage) {
+                return;
+            }
+
             const rawTarget = e.target as Node | null;
             const target = (rawTarget instanceof Element ? rawTarget : rawTarget?.parentElement) as HTMLElement | null;
 
@@ -1588,14 +1830,12 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                 if (newText !== originalText.trim()) {
                     const updatedHtml = doc.documentElement.outerHTML;
                     const cleanDoc = new DOMParser().parseFromString(updatedHtml, 'text/html');
-                    cleanDoc.querySelectorAll('.__ss-active-section, .__ss-active-element, .__ss-active-card, .__ss-hover-element, .__ss-inline-editing').forEach(el => {
-                        el.classList.remove('__ss-active-section', '__ss-active-element', '__ss-active-card', '__ss-hover-element', '__ss-inline-editing');
+                    cleanDoc.querySelectorAll('.__ss-active-section, .__ss-active-element, .__ss-active-card, .__ss-hover-element, .__ss-inline-editing, .__ss-card-drop-target, .__ss-image-panning').forEach(el => {
+                        el.classList.remove('__ss-active-section', '__ss-active-element', '__ss-active-card', '__ss-hover-element', '__ss-inline-editing', '__ss-card-drop-target', '__ss-image-panning');
                     });
-                    cleanDoc.getElementById('__studiosync_preview_styles__')?.remove();
-                    cleanDoc.getElementById('__ss-selection-label-badge__')?.remove();
-                    cleanDoc.getElementById('__ss-hover-label-badge__')?.remove();
-                    cleanDoc.getElementById('__ss-selection-overlay__')?.remove();
-                    cleanDoc.getElementById('__ss-hover-overlay__')?.remove();
+                    cleanDoc.querySelectorAll('#__studiosync_preview_styles__, #__ss-selection-label-badge__, #__ss-hover-label-badge__, #__ss-selection-overlay__, #__ss-hover-overlay__, #__ss-pan-badge__, #__ss-card-drop-badge__').forEach(el => {
+                        el.remove();
+                    });
                     pushHistory(cleanDoc.documentElement.outerHTML);
                 }
             };
@@ -1629,12 +1869,271 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             e.stopPropagation();
         };
 
+        // Figma Canvas Drag-to-Align (Pan/Crop Mode) Handlers
+        const handleMouseDown = (e: MouseEvent) => {
+            // Only handle primary left-click
+            if (e.button !== 0) return;
+            const rawTarget = e.target as HTMLElement | null;
+            if (!rawTarget) return;
+
+            const imgEl = (rawTarget.tagName === 'IMG' ? rawTarget : null) as HTMLImageElement | null;
+            if (!imgEl) return;
+
+            let sectionEl = (imgEl.closest('section, header, footer, nav, main, [id]') || imgEl.closest('[data-section-id]')) as HTMLElement;
+            if (!sectionEl || sectionEl === doc.body || sectionEl === doc.documentElement) {
+                const directChild = Array.from(doc.body.children).find(child => child.contains(imgEl)) as HTMLElement;
+                if (directChild) sectionEl = directChild;
+            }
+            if (!sectionEl) return;
+
+            const cards = getCardCandidates(sectionEl);
+            const parentCard = cards.find(c => c.contains(imgEl));
+
+            panSectionId = sectionEl.id || sectionEl.getAttribute('data-section-id') || '';
+            panCardIndex = parentCard ? cards.indexOf(parentCard) : -1;
+
+            if (panCardIndex === -1) {
+                const standaloneImgs = Array.from(sectionEl.querySelectorAll('img')).filter(el => !cards.some(c => c.contains(el)));
+                panStandaloneImgIndex = standaloneImgs.indexOf(imgEl);
+            } else {
+                panStandaloneImgIndex = -1;
+            }
+
+            isMouseDownOnImg = true;
+            panTargetImg = imgEl;
+            panStartClientX = e.clientX;
+            panStartClientY = e.clientY;
+            hasDraggedImage = false;
+
+            let initX = 50;
+            let initY = 50;
+            const currentPos = imgEl.style.objectPosition || '';
+            if (currentPos) {
+                const parts = currentPos.trim().split(/\s+/);
+                const xVal = parseFloat(parts[0]);
+                const yVal = parseFloat(parts[1]);
+                if (!isNaN(xVal)) initX = Math.round(xVal);
+                if (!isNaN(yVal)) initY = Math.round(yVal);
+            } else {
+                if (imgEl.classList.contains('object-left')) initX = 0;
+                else if (imgEl.classList.contains('object-right')) initX = 100;
+                if (imgEl.classList.contains('object-top')) initY = 0;
+                else if (imgEl.classList.contains('object-bottom')) initY = 100;
+            }
+            panStartPosX = initX;
+            panStartPosY = initY;
+        };
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isMouseDownOnImg || !panTargetImg) return;
+
+            const dx = e.clientX - panStartClientX;
+            const dy = e.clientY - panStartClientY;
+            const dist = Math.hypot(dx, dy);
+
+            if (!hasDraggedImage && dist > 4) {
+                hasDraggedImage = true;
+                panTargetImg.classList.add('__ss-image-panning');
+                e.preventDefault();
+            }
+
+            if (hasDraggedImage) {
+                e.preventDefault();
+                const rect = panTargetImg.getBoundingClientRect();
+                const deltaX = (dx / (rect.width || 200)) * 100;
+                const deltaY = (dy / (rect.height || 200)) * 100;
+
+                const newX = Math.round(Math.max(0, Math.min(100, panStartPosX - deltaX)));
+                const newY = Math.round(Math.max(0, Math.min(100, panStartPosY - deltaY)));
+
+                panTargetImg.style.objectPosition = `${newX}% ${newY}%`;
+
+                let panBadge = doc.getElementById('__ss-pan-badge__');
+                if (!panBadge) {
+                    panBadge = doc.createElement('div');
+                    panBadge.id = '__ss-pan-badge__';
+                    panBadge.className = '__ss-pan-badge';
+                    doc.body.appendChild(panBadge);
+                }
+                panBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#38bdf8;"></span> Aligning: <strong>${newX}% ${newY}%</strong>`;
+                const win = doc.defaultView || iframe.contentWindow;
+                const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+                const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+                panBadge.style.left = `${Math.max(10, rect.left + sx + 8)}px`;
+                const topPos = rect.top + sy - 28;
+                panBadge.style.top = `${topPos < 0 ? rect.bottom + sy + 6 : topPos}px`;
+            }
+        };
+
+        const handleMouseUp = (e: MouseEvent) => {
+            if (!isMouseDownOnImg || !panTargetImg) return;
+
+            const wasDragged = hasDraggedImage;
+            const img = panTargetImg;
+            const cardIdx = panCardIndex;
+            const standIdx = panStandaloneImgIndex;
+
+            isMouseDownOnImg = false;
+            panTargetImg = null;
+
+            img.classList.remove('__ss-image-panning');
+            doc.getElementById('__ss-pan-badge__')?.remove();
+
+            if (wasDragged) {
+                e.preventDefault();
+                e.stopPropagation();
+                const finalPos = img.style.objectPosition || '50% 50%';
+
+                if (panSectionId) {
+                    setSelectedSectionId(panSectionId);
+                }
+
+                if (cardIdx !== -1 && handleUpdateCardContentRef.current) {
+                    handleUpdateCardContentRef.current(cardIdx, { imageObjectPosition: finalPos });
+                    toast.success(`Card image aligned: ${finalPos}`, { duration: 1500 });
+                } else if (standIdx !== -1 && handleUpdateImageRef.current) {
+                    handleUpdateImageRef.current(standIdx, { objectPosition: finalPos });
+                    toast.success(`Image aligned: ${finalPos}`, { duration: 1500 });
+                }
+
+                setTimeout(() => {
+                    hasDraggedImage = false;
+                }, 50);
+            } else {
+                hasDraggedImage = false;
+            }
+        };
+
+        // Figma Canvas Drag-and-Drop Handlers (Assets & Desktop Files -> Cards/Images)
+        const handleDragOver = (e: DragEvent) => {
+            e.preventDefault();
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'copy';
+            }
+            const rawTarget = e.target as HTMLElement | null;
+            if (!rawTarget) return;
+
+            const card = rawTarget.closest('[data-card], [data-bento-card], .card, [class*="card"], [class*="rounded-xl"], [class*="rounded-2xl"], [class*="rounded-3xl"], [class*="rounded-lg"]') as HTMLElement | null;
+            const img = (rawTarget.tagName === 'IMG' ? rawTarget : rawTarget.querySelector('img')) as HTMLImageElement | null;
+            const dropTarget = img || card;
+
+            doc.querySelectorAll('.__ss-card-drop-target').forEach(el => {
+                if (el !== dropTarget) el.classList.remove('__ss-card-drop-target');
+            });
+
+            if (dropTarget) {
+                dropTarget.classList.add('__ss-card-drop-target');
+                let badge = doc.getElementById('__ss-card-drop-badge__');
+                if (!badge) {
+                    badge = doc.createElement('div');
+                    badge.id = '__ss-card-drop-badge__';
+                    badge.className = '__ss-card-drop-badge';
+                    doc.body.appendChild(badge);
+                }
+                const targetName = img ? 'Image' : 'Card';
+                badge.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Drop image onto ${targetName}`;
+                const win = doc.defaultView || iframe.contentWindow;
+                const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+                const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+                const r = dropTarget.getBoundingClientRect();
+                badge.style.left = `${r.left + sx + r.width / 2}px`;
+                badge.style.top = `${r.top + sy + r.height / 2}px`;
+            }
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+            if (!e.relatedTarget || e.relatedTarget === doc.documentElement) {
+                doc.querySelectorAll('.__ss-card-drop-target').forEach(el => el.classList.remove('__ss-card-drop-target'));
+                doc.getElementById('__ss-card-drop-badge__')?.remove();
+            }
+        };
+
+        const handleDrop = async (e: DragEvent) => {
+            e.preventDefault();
+            doc.querySelectorAll('.__ss-card-drop-target').forEach(el => el.classList.remove('__ss-card-drop-target'));
+            doc.getElementById('__ss-card-drop-badge__')?.remove();
+
+            const rawTarget = e.target as HTMLElement | null;
+            if (!rawTarget) return;
+
+            let sectionEl = (rawTarget.closest('section, header, footer, nav, main, [id]') || rawTarget.closest('[data-section-id]')) as HTMLElement;
+            if (!sectionEl || sectionEl === doc.body || sectionEl === doc.documentElement) {
+                const directChild = Array.from(doc.body.children).find(child => child.contains(rawTarget)) as HTMLElement;
+                if (directChild) sectionEl = directChild;
+            }
+            if (!sectionEl) return;
+
+            const sectionId = sectionEl.id || sectionEl.getAttribute('data-section-id');
+            if (sectionId) {
+                setSelectedSectionId(sectionId);
+            }
+
+            const cards = getCardCandidates(sectionEl);
+            const targetCard = cards.find(c => c === rawTarget || c.contains(rawTarget));
+            const cardIndex = targetCard ? cards.indexOf(targetCard) : -1;
+
+            const standaloneImgs = Array.from(sectionEl.querySelectorAll('img')).filter(el => !cards.some(c => c.contains(el)));
+            const targetImg = rawTarget.tagName === 'IMG' ? (rawTarget as HTMLImageElement) : rawTarget.querySelector('img');
+            const imgIndex = targetImg && standaloneImgs.includes(targetImg) ? standaloneImgs.indexOf(targetImg) : -1;
+
+            let assetUrl = '';
+            let assetName = '';
+
+            const jsonStr = e.dataTransfer?.getData('application/json');
+            if (jsonStr) {
+                try {
+                    const parsed = JSON.parse(jsonStr);
+                    assetUrl = parsed.assetUrl || '';
+                    assetName = parsed.assetName || '';
+                } catch {}
+            }
+            if (!assetUrl) {
+                assetUrl = e.dataTransfer?.getData('text/plain') || '';
+            }
+
+            const file = e.dataTransfer?.files?.[0];
+            if (file && file.type.startsWith('image/')) {
+                const toastId = toast.loading(`Uploading "${file.name}" to Cloudflare R2...`);
+                if (handleUploadAssetRef.current) {
+                    const uploaded = await handleUploadAssetRef.current(file);
+                    if (uploaded && uploaded.url) {
+                        assetUrl = uploaded.url;
+                        assetName = uploaded.name;
+                        toast.success(`Asset uploaded! Applying to element...`, { id: toastId });
+                    } else {
+                        return;
+                    }
+                }
+            }
+
+            if (assetUrl) {
+                if (cardIndex !== -1 && handleUpdateCardContentRef.current) {
+                    handleUpdateCardContentRef.current(cardIndex, { imageSrc: assetUrl, imageAlt: assetName || 'Card image' });
+                    toast.success(`Applied image to Card #${cardIndex + 1}!`);
+                } else if (imgIndex !== -1 && handleUpdateImageRef.current) {
+                    handleUpdateImageRef.current(imgIndex, { src: assetUrl, alt: assetName || 'Image' });
+                    toast.success(`Applied image!`);
+                } else if (targetImg) {
+                    targetImg.src = assetUrl;
+                    targetImg.setAttribute('src', assetUrl);
+                    pushHistory(doc.documentElement.outerHTML);
+                    toast.success(`Applied image!`);
+                }
+            }
+        };
+
         doc.addEventListener('click', handleClick, true);
         doc.addEventListener('dblclick', handleDblClick, true);
         doc.addEventListener('auxclick', handleAuxClick, true);
         doc.addEventListener('submit', handleSubmit, true);
         doc.addEventListener('mouseover', handleMouseOver, true);
         doc.addEventListener('mouseout', handleMouseOut, true);
+        doc.addEventListener('mousedown', handleMouseDown, true);
+        doc.addEventListener('mousemove', handleMouseMove, true);
+        doc.addEventListener('mouseup', handleMouseUp, true);
+        doc.addEventListener('dragover', handleDragOver, true);
+        doc.addEventListener('dragleave', handleDragLeave, true);
+        doc.addEventListener('drop', handleDrop, true);
 
         // On scroll, update overlay positions so they stay precisely synced
         const handleScroll = () => {
@@ -1676,6 +2175,12 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             doc.removeEventListener('submit', handleSubmit, true);
             doc.removeEventListener('mouseover', handleMouseOver, true);
             doc.removeEventListener('mouseout', handleMouseOut, true);
+            doc.removeEventListener('mousedown', handleMouseDown, true);
+            doc.removeEventListener('mousemove', handleMouseMove, true);
+            doc.removeEventListener('mouseup', handleMouseUp, true);
+            doc.removeEventListener('dragover', handleDragOver, true);
+            doc.removeEventListener('dragleave', handleDragLeave, true);
+            doc.removeEventListener('drop', handleDrop, true);
             doc.removeEventListener('scroll', handleScroll, true);
         };
     }, [layers, pushHistory]);
@@ -2058,8 +2563,19 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
         }
     };
 
-    // Update Standalone Image (src, alt) via Right Sidebar
-    const handleUpdateImage = (index: number, fields: { src?: string; alt?: string }) => {
+    // Update Standalone Image (src, alt, objectFit, objectPosition, height, aspectRatio, scale) via Right Sidebar
+    const handleUpdateImage = (
+        index: number,
+        fields: {
+            src?: string;
+            alt?: string;
+            objectFit?: string;
+            objectPosition?: string;
+            height?: string;
+            aspectRatio?: string;
+            scale?: number;
+        }
+    ) => {
         if (!selectedSectionId) return;
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
@@ -2068,15 +2584,42 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
 
         const cards = getCardCandidates(sectionEl);
         const imgEls = Array.from(sectionEl.querySelectorAll('img')).filter(el => !cards.some(c => c.contains(el)));
-        if (imgEls[index]) {
+        const targetImg = imgEls[index];
+        if (targetImg) {
             let hasChanged = false;
-            if (fields.src !== undefined && imgEls[index].getAttribute('src') !== fields.src) {
-                imgEls[index].setAttribute('src', fields.src);
+            if (fields.src !== undefined && targetImg.getAttribute('src') !== fields.src) {
+                targetImg.setAttribute('src', fields.src);
                 hasChanged = true;
             }
-            if (fields.alt !== undefined && imgEls[index].getAttribute('alt') !== fields.alt) {
-                imgEls[index].setAttribute('alt', fields.alt);
+            if (fields.alt !== undefined && targetImg.getAttribute('alt') !== fields.alt) {
+                targetImg.setAttribute('alt', fields.alt);
                 hasChanged = true;
+            }
+            if (fields.objectFit !== undefined && targetImg.style.objectFit !== fields.objectFit) {
+                targetImg.style.objectFit = fields.objectFit;
+                hasChanged = true;
+            }
+            if (fields.objectPosition !== undefined && targetImg.style.objectPosition !== fields.objectPosition) {
+                targetImg.style.objectPosition = fields.objectPosition;
+                hasChanged = true;
+            }
+            if (fields.height !== undefined && targetImg.style.height !== fields.height) {
+                targetImg.style.height = fields.height;
+                hasChanged = true;
+            }
+            if (fields.aspectRatio !== undefined) {
+                const val = (fields.aspectRatio && fields.aspectRatio !== 'auto') ? fields.aspectRatio : '';
+                if (targetImg.style.aspectRatio !== val) {
+                    targetImg.style.aspectRatio = val;
+                    hasChanged = true;
+                }
+            }
+            if (fields.scale !== undefined) {
+                const tr = fields.scale === 100 ? '' : `scale(${fields.scale / 100})`;
+                if (targetImg.style.transform !== tr) {
+                    targetImg.style.transform = tr;
+                    hasChanged = true;
+                }
             }
             if (!hasChanged) return;
 
@@ -2087,13 +2630,257 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                 const liveSection = iframeRef.current.contentDocument.getElementById(selectedSectionId);
                 const liveCards = liveSection ? getCardCandidates(liveSection) : [];
                 const liveImgs = liveSection ? Array.from(liveSection.querySelectorAll('img')).filter(el => !liveCards.some(c => c.contains(el))) : [];
-                if (liveImgs[index]) {
-                    if (fields.src !== undefined) liveImgs[index].setAttribute('src', fields.src);
-                    if (fields.alt !== undefined) liveImgs[index].setAttribute('alt', fields.alt);
+                const liveImg = liveImgs[index];
+                if (liveImg) {
+                    if (fields.src !== undefined) liveImg.setAttribute('src', fields.src);
+                    if (fields.alt !== undefined) liveImg.setAttribute('alt', fields.alt);
+                    if (fields.objectFit !== undefined) liveImg.style.objectFit = fields.objectFit;
+                    if (fields.objectPosition !== undefined) liveImg.style.objectPosition = fields.objectPosition;
+                    if (fields.height !== undefined) liveImg.style.height = fields.height;
+                    if (fields.aspectRatio !== undefined) liveImg.style.aspectRatio = (fields.aspectRatio && fields.aspectRatio !== 'auto') ? fields.aspectRatio : '';
+                    if (fields.scale !== undefined) liveImg.style.transform = fields.scale === 100 ? '' : `scale(${fields.scale / 100})`;
                 }
             }
         }
     };
+    handleUpdateImageRef.current = handleUpdateImage;
+
+    // CSRF Token Helper
+    const getCsrfToken = () => {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            || (document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ? decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)![1]) : '');
+    };
+
+    // Fetch Project Assets from Backend
+    const fetchAssets = useCallback(async () => {
+        try {
+            const res = await fetch(`/projects/${project.id}/assets`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const list = (data.assets || []).map((a: ProjectAsset) => ({
+                    ...a,
+                    url: resolveAssetUrl(a)
+                }));
+                setAssets(list);
+            }
+        } catch (err) {
+            console.error('Failed to fetch assets:', err);
+        }
+    }, [project.id, resolveAssetUrl]);
+
+    // Upload New Asset to Cloudflare R2 (Max 10MB)
+    const handleUploadAsset = async (file: File, description?: string, customName?: string): Promise<ProjectAsset | null> => {
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error('File size exceeds 10MB limit. Please upload an image under 10MB.');
+            return null;
+        }
+
+        setIsUploadingAsset(true);
+        const toastId = toast.loading('Uploading asset to Cloudflare R2...');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('image', file);
+            if (customName) formData.append('name', customName);
+            if (description) formData.append('description', description);
+
+            const res = await fetch(`/projects/${project.id}/assets`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': getCsrfToken()
+                },
+                body: formData
+            });
+
+            const data = await res.json();
+            if (res.ok && data.asset) {
+                toast.success('Asset uploaded successfully to Cloudflare R2!', { id: toastId });
+                setAssets(prev => [data.asset, ...prev]);
+                return data.asset;
+            } else {
+                toast.error(data.message || 'Failed to upload asset', { id: toastId });
+                return null;
+            }
+        } catch (err: any) {
+            toast.error(err?.message || 'Error uploading asset', { id: toastId });
+            return null;
+        } finally {
+            setIsUploadingAsset(false);
+        }
+    };
+    handleUploadAssetRef.current = handleUploadAsset;
+
+    // Direct Upload Handler for Specific Image or Card
+    const handleDirectUploadForTarget = async (file: File) => {
+        const target = targetDirectUploadRef.current;
+        if (!target) return;
+
+        const asset = await handleUploadAsset(file);
+        if (asset && asset.url) {
+            if (target.type === 'image') {
+                handleUpdateImage(target.index, { src: asset.url, alt: asset.name });
+                toast.success('Applied new uploaded asset to image!');
+            } else if (target.type === 'card') {
+                handleUpdateCardContent(target.index, { imageSrc: asset.url, imageAlt: asset.name });
+                toast.success('Applied new uploaded asset to card!');
+            }
+        }
+        targetDirectUploadRef.current = null;
+    };
+
+    // Replace Existing Asset on Cloudflare R2 (Deletes Old File for Storage Efficiency)
+    const handleReplaceAsset = async (asset: ProjectAsset, newFile: File) => {
+        if (newFile.size > 10 * 1024 * 1024) {
+            toast.error('Replacement image exceeds 10MB limit.');
+            return;
+        }
+
+        setIsReplacingAsset(true);
+        const toastId = toast.loading('Replacing asset on Cloudflare R2 (cleaning up old storage)...');
+
+        try {
+            const formData = new FormData();
+            formData.append('file', newFile);
+            formData.append('image', newFile);
+
+            const res = await fetch(`/projects/${project.id}/assets/${asset.id}/replace`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': getCsrfToken()
+                },
+                body: formData
+            });
+
+            const data = await res.json();
+            if (res.ok && data.asset) {
+                toast.success('Asset replaced successfully! Previous file deleted from R2 storage.', { id: toastId });
+                const updatedAsset: ProjectAsset = data.asset;
+                setAssets(prev => prev.map(a => a.id === asset.id ? updatedAsset : a));
+
+                // If the old asset URL was used in the current page HTML, update to new URL
+                if (asset.url && updatedAsset.url && asset.url !== updatedAsset.url) {
+                    if (html.includes(asset.url)) {
+                        const newHtml = html.replaceAll(asset.url, updatedAsset.url);
+                        pushHistory(newHtml);
+                        if (iframeRef.current?.contentDocument) {
+                            iframeRef.current.contentDocument.querySelectorAll(`img[src="${asset.url}"]`).forEach(img => {
+                                img.setAttribute('src', updatedAsset.url!);
+                            });
+                        }
+                        toast.info('Updated image references in your page to the new URL.');
+                    }
+                }
+                setAssetToReplace(null);
+            } else {
+                toast.error(data.message || 'Failed to replace asset', { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error(err?.message || 'Error replacing asset', { id: toastId });
+        } finally {
+            setIsReplacingAsset(false);
+        }
+    };
+
+    // Update Asset Metadata (name, description)
+    const handleUpdateAssetMetadata = async (assetId: number, name: string, description: string) => {
+        try {
+            const res = await fetch(`/projects/${project.id}/assets/${assetId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': getCsrfToken()
+                },
+                body: JSON.stringify({ name, description })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.asset) {
+                toast.success('Asset details updated!');
+                setAssets(prev => prev.map(a => a.id === assetId ? data.asset : a));
+                setEditingAsset(null);
+            } else {
+                toast.error(data.message || 'Failed to update asset');
+            }
+        } catch {
+            toast.error('Error updating asset details');
+        }
+    };
+
+    // Delete Asset from Cloudflare R2 and Database
+    const handleDeleteAsset = async (asset: ProjectAsset) => {
+        if (!confirm(`Are you sure you want to delete "${asset.name}"?\n\nThis will permanently delete the file from Cloudflare R2 storage to save space.`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`/projects/${project.id}/assets/${asset.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': getCsrfToken()
+                }
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                toast.success('Asset permanently deleted from Cloudflare R2.');
+                setAssets(prev => prev.filter(a => a.id !== asset.id));
+            } else {
+                toast.error(data.message || 'Failed to delete asset');
+            }
+        } catch {
+            toast.error('Error deleting asset');
+        }
+    };
+
+    // Apply an Asset URL to the Active / Target Element
+    const applyAssetToTarget = (assetUrl: string, assetName?: string) => {
+        if (assetPickerModal) {
+            if (assetPickerModal.targetType === 'image') {
+                handleUpdateImage(assetPickerModal.targetIndex, { src: assetUrl, alt: assetName });
+                toast.success('Applied asset to image');
+            } else if (assetPickerModal.targetType === 'card') {
+                handleUpdateCardContent(assetPickerModal.targetIndex, { imageSrc: assetUrl, imageAlt: assetName });
+                toast.success('Applied asset to card');
+            }
+            setAssetPickerModal(null);
+            return;
+        }
+
+        if (highlightedTarget?.type === 'image') {
+            handleUpdateImage(highlightedTarget.index, { src: assetUrl, alt: assetName });
+            toast.success('Applied asset to selected image');
+        } else if (highlightedTarget?.type === 'card') {
+            handleUpdateCardContent(highlightedTarget.index, { imageSrc: assetUrl, imageAlt: assetName });
+            toast.success('Applied asset to selected card');
+        } else {
+            navigator.clipboard.writeText(assetUrl);
+            toast.info('Asset URL copied to clipboard! Select an image or paste anywhere.');
+        }
+    };
+
+    // Filtered Assets based on Search
+    const filteredAssets = useMemo(() => {
+        if (!assetSearchQuery.trim()) return assets;
+        const query = assetSearchQuery.toLowerCase();
+        return assets.filter(a =>
+            a.name?.toLowerCase().includes(query) ||
+            a.description?.toLowerCase().includes(query)
+        );
+    }, [assets, assetSearchQuery]);
 
     // Update Section-Level Styles (Group Level)
     const handleUpdateSectionStyle = (styles: { backgroundColor?: string; textColor?: string }) => {
@@ -2634,6 +3421,13 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             buttonColor?: string;
             imageSrc?: string;
             imageAlt?: string;
+            imageObjectFit?: string;
+            imageObjectPosition?: string;
+            imageHeight?: string;
+            imageAspectRatio?: string;
+            imageScale?: number;
+            imagePlacement?: 'top' | 'bottom';
+            removeImage?: boolean;
             bg?: string;
             border?: string;
             color?: string;
@@ -2773,12 +3567,28 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
         }
 
         // 4. Image
-        if (updates.imageSrc !== undefined || updates.imageAlt !== undefined) {
+        if (updates.removeImage) {
+            const imgEl = cardEl.querySelector('img');
+            if (imgEl) {
+                imgEl.remove();
+                hasChanged = true;
+            }
+        } else if (
+            updates.imageSrc !== undefined ||
+            updates.imageAlt !== undefined ||
+            updates.imageObjectFit !== undefined ||
+            updates.imageObjectPosition !== undefined ||
+            updates.imageHeight !== undefined ||
+            updates.imageAspectRatio !== undefined ||
+            updates.imageScale !== undefined ||
+            updates.imagePlacement !== undefined
+        ) {
             let imgEl = cardEl.querySelector('img') as HTMLImageElement | null;
             if (!imgEl && updates.imageSrc) {
                 imgEl = doc.createElement('img');
                 imgEl.className = 'w-full h-48 object-cover rounded-xl mb-4';
                 cardEl.prepend(imgEl);
+                hasChanged = true;
             }
             if (imgEl) {
                 if (updates.imageSrc !== undefined && imgEl.getAttribute('src') !== updates.imageSrc) {
@@ -2790,6 +3600,44 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     imgEl.alt = updates.imageAlt;
                     imgEl.setAttribute('alt', updates.imageAlt);
                     hasChanged = true;
+                }
+                if (updates.imageObjectFit !== undefined && imgEl.style.objectFit !== updates.imageObjectFit) {
+                    imgEl.style.objectFit = updates.imageObjectFit;
+                    hasChanged = true;
+                }
+                if (updates.imageObjectPosition !== undefined && imgEl.style.objectPosition !== updates.imageObjectPosition) {
+                    imgEl.style.objectPosition = updates.imageObjectPosition;
+                    hasChanged = true;
+                }
+                if (updates.imageHeight !== undefined && imgEl.style.height !== updates.imageHeight) {
+                    imgEl.style.height = updates.imageHeight;
+                    hasChanged = true;
+                }
+                if (updates.imageAspectRatio !== undefined) {
+                    const val = (updates.imageAspectRatio && updates.imageAspectRatio !== 'auto') ? updates.imageAspectRatio : '';
+                    if (imgEl.style.aspectRatio !== val) {
+                        imgEl.style.aspectRatio = val;
+                        hasChanged = true;
+                    }
+                }
+                if (updates.imageScale !== undefined) {
+                    const tr = updates.imageScale === 100 ? '' : `scale(${updates.imageScale / 100})`;
+                    if (imgEl.style.transform !== tr) {
+                        imgEl.style.transform = tr;
+                        if (!cardEl.classList.contains('overflow-hidden')) {
+                            cardEl.classList.add('overflow-hidden');
+                        }
+                        hasChanged = true;
+                    }
+                }
+                if (updates.imagePlacement !== undefined) {
+                    if (updates.imagePlacement === 'top' && cardEl.firstElementChild !== imgEl) {
+                        cardEl.prepend(imgEl);
+                        hasChanged = true;
+                    } else if (updates.imagePlacement === 'bottom' && cardEl.lastElementChild !== imgEl) {
+                        cardEl.appendChild(imgEl);
+                        hasChanged = true;
+                    }
                 }
             }
         }
@@ -2877,16 +3725,49 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                         const b = liveCard.querySelector('a, button, [role="button"]') as HTMLElement | null;
                         if (b) b.style.color = updates.buttonColor || '';
                     }
-                    if (updates.imageSrc !== undefined) {
+                    if (updates.removeImage) {
                         const im = liveCard.querySelector('img');
-                        if (im) {
-                            im.src = updates.imageSrc;
-                            im.setAttribute('src', updates.imageSrc);
+                        if (im) im.remove();
+                    } else if (
+                        updates.imageSrc !== undefined ||
+                        updates.imageAlt !== undefined ||
+                        updates.imageObjectFit !== undefined ||
+                        updates.imageObjectPosition !== undefined ||
+                        updates.imageHeight !== undefined ||
+                        updates.imageAspectRatio !== undefined ||
+                        updates.imageScale !== undefined ||
+                        updates.imagePlacement !== undefined
+                    ) {
+                        let im = liveCard.querySelector('img') as HTMLImageElement | null;
+                        if (!im && updates.imageSrc) {
+                            im = liveCard.ownerDocument.createElement('img');
+                            im.className = 'w-full h-48 object-cover rounded-xl mb-4';
+                            liveCard.prepend(im);
                         }
-                    }
-                    if (updates.imageAlt !== undefined) {
-                        const im = liveCard.querySelector('img');
-                        if (im) im.setAttribute('alt', updates.imageAlt);
+                        if (im) {
+                            if (updates.imageSrc !== undefined) {
+                                im.src = updates.imageSrc;
+                                im.setAttribute('src', updates.imageSrc);
+                            }
+                            if (updates.imageAlt !== undefined) im.setAttribute('alt', updates.imageAlt);
+                            if (updates.imageObjectFit !== undefined) im.style.objectFit = updates.imageObjectFit;
+                            if (updates.imageObjectPosition !== undefined) im.style.objectPosition = updates.imageObjectPosition;
+                            if (updates.imageHeight !== undefined) im.style.height = updates.imageHeight;
+                            if (updates.imageAspectRatio !== undefined) im.style.aspectRatio = (updates.imageAspectRatio && updates.imageAspectRatio !== 'auto') ? updates.imageAspectRatio : '';
+                            if (updates.imageScale !== undefined) {
+                                im.style.transform = updates.imageScale === 100 ? '' : `scale(${updates.imageScale / 100})`;
+                                if (!liveCard.classList.contains('overflow-hidden')) {
+                                    liveCard.classList.add('overflow-hidden');
+                                }
+                            }
+                            if (updates.imagePlacement !== undefined) {
+                                if (updates.imagePlacement === 'top' && liveCard.firstElementChild !== im) {
+                                    liveCard.prepend(im);
+                                } else if (updates.imagePlacement === 'bottom' && liveCard.lastElementChild !== im) {
+                                    liveCard.appendChild(im);
+                                }
+                            }
+                        }
                     }
                     if (updates.bg !== undefined) liveCard.style.backgroundColor = updates.bg || '';
                     if (updates.border !== undefined) liveCard.style.borderColor = updates.border || '';
@@ -2895,6 +3776,7 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             }
         }
     };
+    handleUpdateCardContentRef.current = handleUpdateCardContent;
 
     // Duplicate Card in Section
     const handleDuplicateCard = (cardIndex: number) => {
@@ -3345,10 +4227,10 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                 try {
                     const docClone = iframeRef.current.contentDocument.documentElement.cloneNode(true) as HTMLElement;
                     // Strip all editor selection/hover classes and badges
-                    docClone.querySelectorAll('.__ss-active-section, .__ss-active-element, .__ss-active-card').forEach(el => {
-                        el.classList.remove('__ss-active-section', '__ss-active-element', '__ss-active-card');
+                    docClone.querySelectorAll('.__ss-active-section, .__ss-active-element, .__ss-active-card, .__ss-card-drop-target, .__ss-image-panning').forEach(el => {
+                        el.classList.remove('__ss-active-section', '__ss-active-element', '__ss-active-card', '__ss-card-drop-target', '__ss-image-panning');
                     });
-                    docClone.querySelectorAll('#__studiosync_preview_styles__, #__ss-selection-overlay__, #__ss-selection-label-badge__, #__ss-section-badge__, .__ss-section-badge').forEach(el => {
+                    docClone.querySelectorAll('#__studiosync_preview_styles__, #__ss-selection-overlay__, #__ss-selection-label-badge__, #__ss-section-badge__, .__ss-section-badge, #__ss-pan-badge__, #__ss-card-drop-badge__').forEach(el => {
                         el.remove();
                     });
                     docClone.querySelectorAll('[contenteditable]').forEach(el => {
@@ -3910,27 +4792,42 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     <div className="flex items-center border-b border-zinc-800 shrink-0">
                         <button
                             onClick={() => setActiveTab('properties')}
-                            className={`flex-1 py-3 text-xs font-semibold text-center transition-colors cursor-pointer border-b-2 ${
+                            className={`flex-1 py-3 text-xs font-semibold text-center transition-colors cursor-pointer border-b-2 truncate px-2 ${
                                 activeTab === 'properties'
                                     ? 'border-primary text-zinc-100 bg-zinc-800/40'
                                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
                             }`}
                         >
-                            Content & Properties
+                            Content
                         </button>
                         <button
                             onClick={() => setActiveTab('design')}
-                            className={`flex-1 py-3 text-xs font-semibold text-center transition-colors cursor-pointer border-b-2 ${
+                            className={`flex-1 py-3 text-xs font-semibold text-center transition-colors cursor-pointer border-b-2 truncate px-2 ${
                                 activeTab === 'design'
                                     ? 'border-primary text-zinc-100 bg-zinc-800/40'
                                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
                             }`}
                         >
-                            Design Presets
+                            Design
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('assets')}
+                            className={`flex-1 py-3 text-xs font-semibold text-center transition-colors cursor-pointer border-b-2 flex items-center justify-center gap-1.5 px-2 ${
+                                activeTab === 'assets'
+                                    ? 'border-primary text-zinc-100 bg-zinc-800/40'
+                                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                            }`}
+                        >
+                            <span>Assets</span>
+                            {assets.length > 0 && (
+                                <span className="px-1.5 py-0.2 rounded-full bg-primary/20 text-primary text-[10px] font-mono">
+                                    {assets.length}
+                                </span>
+                            )}
                         </button>
                         <button
                             onClick={() => setIsRightSidebarOpen(false)}
-                            className="p-3 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border-l border-zinc-800 cursor-pointer"
+                            className="p-3 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border-l border-zinc-800 cursor-pointer shrink-0"
                             title="Close Inspector"
                         >
                             <X className="w-4 h-4" />
@@ -3939,7 +4836,7 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
 
                     {/* Tab Content */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                        {activeTab === 'properties' ? (
+                        {activeTab === 'properties' && (
                             <div className="space-y-6">
                                 {/* Section-Based Workflow Tip */}
                                 <div className="flex items-start gap-2.5 px-3 py-2.5 bg-primary/10 border border-primary/20 rounded-xl text-primary text-xs">
@@ -4870,41 +5767,382 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                                                                     )}
                                                                 </div>
 
-                                                                {/* 4. Card Image (if present or editable) */}
-                                                                {card.imageSrc && (
-                                                                    <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/70">
+                                                                {/* 4. Card Image & Figma Alignment Inspector */}
+                                                                <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+                                                                    <div className="flex items-center justify-between">
                                                                         <label className="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
-                                                                            <ImageIcon className="w-3 h-3 text-purple-400" />
+                                                                            <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
                                                                             <span>Card Image</span>
                                                                         </label>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <img
-                                                                                src={card.imageSrc}
-                                                                                alt={card.imageAlt || 'Card image'}
-                                                                                className="w-12 h-12 object-cover rounded-md border border-zinc-700 shrink-0 bg-zinc-950"
-                                                                            />
-                                                                            <div className="flex-1 space-y-1">
+                                                                        {card.imageSrc && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleUpdateCardContent(card.index, { removeImage: true })}
+                                                                                className="text-[10px] text-zinc-500 hover:text-red-400 flex items-center gap-1 transition-colors cursor-pointer"
+                                                                                title="Remove image from card"
+                                                                            >
+                                                                                <Trash2 className="w-3 h-3" />
+                                                                                <span>Remove</span>
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {!card.imageSrc ? (
+                                                                        <div className="p-3 border-2 border-dashed border-zinc-800 hover:border-zinc-700 rounded-xl bg-zinc-900/40 text-center space-y-2 transition-colors">
+                                                                            <div className="text-[11px] text-zinc-400">No image on this card</div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setAssetPickerModal({
+                                                                                        isOpen: true,
+                                                                                        targetType: 'card',
+                                                                                        targetIndex: card.index
+                                                                                    })}
+                                                                                    className="flex-1 py-1.5 px-2 bg-primary/15 hover:bg-primary/25 border border-primary/30 rounded-lg text-primary text-[10.5px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <ImageIcon className="w-3 h-3" />
+                                                                                    <span>Choose Asset</span>
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        targetDirectUploadRef.current = { type: 'card', index: card.index };
+                                                                                        directUploadFileInputRef.current?.click();
+                                                                                    }}
+                                                                                    className="flex-1 py-1.5 px-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-300 text-[10.5px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <Upload className="w-3 h-3 text-zinc-400" />
+                                                                                    <span>Upload R2</span>
+                                                                                </button>
+                                                                            </div>
+                                                                            <p className="text-[9.5px] text-zinc-500">Or drag an image from Assets tab onto this card</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="space-y-3 bg-zinc-900/60 p-2.5 rounded-xl border border-zinc-800/80">
+                                                                            {/* Thumbnail + URL + Alt */}
+                                                                            <div className="flex items-start gap-2.5">
+                                                                                <div className="w-14 h-14 rounded-lg overflow-hidden border border-zinc-700/80 bg-zinc-950 shrink-0 relative group flex items-center justify-center">
+                                                                                    <img
+                                                                                        src={card.imageSrc}
+                                                                                        alt={card.imageAlt || 'Card image'}
+                                                                                        className="w-full h-full"
+                                                                                        style={{
+                                                                                            objectFit: card.imageObjectFit || 'cover',
+                                                                                            objectPosition: card.imageObjectPosition || '50% 50%'
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                                <div className="flex-1 space-y-1.5 min-w-0">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        data-card-field="image"
+                                                                                        value={card.imageSrc}
+                                                                                        placeholder="Image URL..."
+                                                                                        onFocus={() => handleSidebarSelect('card', card.index, 'image')}
+                                                                                        onChange={(e) => handleUpdateCardContent(card.index, { imageSrc: e.target.value })}
+                                                                                        className="w-full text-[11px] bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1 text-zinc-200 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none font-mono truncate"
+                                                                                    />
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={card.imageAlt}
+                                                                                        placeholder="Alt description..."
+                                                                                        onFocus={() => handleSidebarSelect('card', card.index, 'image')}
+                                                                                        onChange={(e) => handleUpdateCardContent(card.index, { imageAlt: e.target.value })}
+                                                                                        className="w-full text-[11px] bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1 text-zinc-200 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none truncate"
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Replace Buttons */}
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setAssetPickerModal({
+                                                                                        isOpen: true,
+                                                                                        targetType: 'card',
+                                                                                        targetIndex: card.index
+                                                                                    })}
+                                                                                    className="flex-1 py-1 px-2 bg-primary/15 hover:bg-primary/25 border border-primary/30 rounded text-primary text-[10px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <ImageIcon className="w-3 h-3" />
+                                                                                    <span>Assets</span>
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        targetDirectUploadRef.current = { type: 'card', index: card.index };
+                                                                                        directUploadFileInputRef.current?.click();
+                                                                                    }}
+                                                                                    className="flex-1 py-1 px-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-300 text-[10px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                                                                >
+                                                                                    <Upload className="w-3 h-3 text-zinc-400" />
+                                                                                    <span>Upload R2</span>
+                                                                                </button>
+                                                                            </div>
+
+                                                                            {/* Figma Fit Modes */}
+                                                                            <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+                                                                                <div className="flex items-center justify-between text-[10.5px]">
+                                                                                    <span className="text-zinc-400 font-medium">Fit Mode</span>
+                                                                                    <span className="text-[9.5px] font-mono text-zinc-500 uppercase">{card.imageObjectFit || 'cover'}</span>
+                                                                                </div>
+                                                                                <div className="grid grid-cols-4 gap-1 p-0.5 bg-zinc-950 rounded-lg border border-zinc-800/80">
+                                                                                    {[
+                                                                                        { id: 'cover', label: 'Fill', tip: 'Cover container' },
+                                                                                        { id: 'contain', label: 'Fit', tip: 'Fit inside container' },
+                                                                                        { id: 'none', label: 'Crop', tip: 'Original size, crop' },
+                                                                                        { id: 'fill', label: 'Stretch', tip: 'Stretch to fit' }
+                                                                                    ].map(mode => (
+                                                                                        <button
+                                                                                            key={mode.id}
+                                                                                            type="button"
+                                                                                            onClick={() => handleUpdateCardContent(card.index, { imageObjectFit: mode.id })}
+                                                                                            title={mode.tip}
+                                                                                            className={`py-1 rounded text-[10px] font-medium transition-all cursor-pointer text-center ${
+                                                                                                (card.imageObjectFit || 'cover') === mode.id
+                                                                                                    ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                                                                                                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                                                                            }`}
+                                                                                        >
+                                                                                            {mode.label}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* 9-Point Alignment Matrix & Live Position */}
+                                                                            <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+                                                                                <div className="flex items-center justify-between text-[10.5px]">
+                                                                                    <span className="text-zinc-400 font-medium flex items-center gap-1">
+                                                                                        <Move className="w-3 h-3 text-primary" />
+                                                                                        <span>Figma Alignment Matrix</span>
+                                                                                    </span>
+                                                                                    <span className="text-[10px] font-mono text-primary font-semibold">
+                                                                                        X: {card.imagePositionX ?? 50}% Y: {card.imagePositionY ?? 50}%
+                                                                                    </span>
+                                                                                </div>
+
+                                                                                <div className="flex items-center gap-3">
+                                                                                    {/* 3x3 Matrix */}
+                                                                                    <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-950 rounded-lg border border-zinc-800/80 w-24 h-24 shrink-0">
+                                                                                        {[
+                                                                                            { pos: '0% 0%', label: 'Top Left' },
+                                                                                            { pos: '50% 0%', label: 'Top Center' },
+                                                                                            { pos: '100% 0%', label: 'Top Right' },
+                                                                                            { pos: '0% 50%', label: 'Center Left' },
+                                                                                            { pos: '50% 50%', label: 'Center' },
+                                                                                            { pos: '100% 50%', label: 'Center Right' },
+                                                                                            { pos: '0% 100%', label: 'Bottom Left' },
+                                                                                            { pos: '50% 100%', label: 'Bottom Center' },
+                                                                                            { pos: '100% 100%', label: 'Bottom Right' }
+                                                                                        ].map((anchor) => {
+                                                                                            const isSelected = (card.imageObjectPosition || '50% 50%').trim() === anchor.pos;
+                                                                                            return (
+                                                                                                <button
+                                                                                                    key={anchor.pos}
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleUpdateCardContent(card.index, { imageObjectPosition: anchor.pos })}
+                                                                                                    title={`Align ${anchor.label} (${anchor.pos})`}
+                                                                                                    className={`rounded flex items-center justify-center transition-all cursor-pointer ${
+                                                                                                        isSelected
+                                                                                                            ? 'bg-primary text-primary-foreground ring-1 ring-primary shadow-sm'
+                                                                                                            : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                                                                                    }`}
+                                                                                                >
+                                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white scale-125' : 'bg-zinc-600'}`} />
+                                                                                                </button>
+                                                                                            );
+                                                                                        })}
+                                                                                    </div>
+
+                                                                                    {/* Canvas Pan Hint */}
+                                                                                    <div className="flex-1 space-y-1.5 text-[10px] text-zinc-400 bg-zinc-950/60 p-2 rounded-lg border border-zinc-800/50 leading-relaxed">
+                                                                                        <div className="text-zinc-300 font-medium flex items-center gap-1">
+                                                                                            <span>💡 Canvas Drag & Pan:</span>
+                                                                                        </div>
+                                                                                        <p className="text-[9.5px] text-zinc-400">
+                                                                                            Drag the image directly on the canvas to pan and align in real time.
+                                                                                        </p>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => handleUpdateCardContent(card.index, { imageObjectPosition: '50% 50%' })}
+                                                                                            className="text-[9.5px] text-primary hover:underline flex items-center gap-1 cursor-pointer pt-0.5"
+                                                                                        >
+                                                                                            <RotateCcw className="w-2.5 h-2.5" />
+                                                                                            <span>Reset to 50% 50%</span>
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Position Sliders (X & Y) */}
+                                                                            <div className="space-y-2 pt-1 border-t border-zinc-800/80">
+                                                                                <div className="space-y-1">
+                                                                                    <div className="flex items-center justify-between text-[10px]">
+                                                                                        <span className="text-zinc-400">X Position (Horizontal)</span>
+                                                                                        <span className="font-mono text-zinc-300">{card.imagePositionX ?? 50}%</span>
+                                                                                    </div>
+                                                                                    <input
+                                                                                        type="range"
+                                                                                        min="0"
+                                                                                        max="100"
+                                                                                        value={card.imagePositionX ?? 50}
+                                                                                        onChange={(e) => {
+                                                                                            const newX = e.target.value;
+                                                                                            const curY = card.imagePositionY ?? 50;
+                                                                                            handleUpdateCardContent(card.index, { imageObjectPosition: `${newX}% ${curY}%` });
+                                                                                        }}
+                                                                                        className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                                    />
+                                                                                </div>
+                                                                                <div className="space-y-1">
+                                                                                    <div className="flex items-center justify-between text-[10px]">
+                                                                                        <span className="text-zinc-400">Y Position (Vertical)</span>
+                                                                                        <span className="font-mono text-zinc-300">{card.imagePositionY ?? 50}%</span>
+                                                                                    </div>
+                                                                                    <input
+                                                                                        type="range"
+                                                                                        min="0"
+                                                                                        max="100"
+                                                                                        value={card.imagePositionY ?? 50}
+                                                                                        onChange={(e) => {
+                                                                                            const curX = card.imagePositionX ?? 50;
+                                                                                            const newY = e.target.value;
+                                                                                            handleUpdateCardContent(card.index, { imageObjectPosition: `${curX}% ${newY}%` });
+                                                                                        }}
+                                                                                        className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Aspect Ratio Presets */}
+                                                                            <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+                                                                                <div className="flex items-center justify-between text-[10.5px]">
+                                                                                    <span className="text-zinc-400 font-medium">Aspect Ratio</span>
+                                                                                    <span className="text-[9.5px] font-mono text-zinc-500">
+                                                                                        {card.imageAspectRatio || 'Default / Auto'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="grid grid-cols-5 gap-1 p-0.5 bg-zinc-950 rounded-lg border border-zinc-800/80">
+                                                                                    {[
+                                                                                        { id: 'auto', label: 'Auto' },
+                                                                                        { id: '16/9', label: '16:9' },
+                                                                                        { id: '4/3', label: '4:3' },
+                                                                                        { id: '1/1', label: '1:1' },
+                                                                                        { id: '3/4', label: '3:4' }
+                                                                                    ].map(ratio => {
+                                                                                        const isMatch = (card.imageAspectRatio || 'auto') === ratio.id || (!card.imageAspectRatio && ratio.id === 'auto');
+                                                                                        return (
+                                                                                            <button
+                                                                                                key={ratio.id}
+                                                                                                type="button"
+                                                                                                onClick={() => handleUpdateCardContent(card.index, { imageAspectRatio: ratio.id === 'auto' ? '' : ratio.id })}
+                                                                                                className={`py-1 rounded text-[10px] font-medium transition-all cursor-pointer text-center ${
+                                                                                                    isMatch
+                                                                                                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                                                                                                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                                                                                }`}
+                                                                                            >
+                                                                                                {ratio.label}
+                                                                                            </button>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Height Slider */}
+                                                                            <div className="space-y-1 pt-1">
+                                                                                <div className="flex items-center justify-between text-[10px]">
+                                                                                    <span className="text-zinc-400">Card Image Height</span>
+                                                                                    <div className="flex items-center gap-1.5 font-mono text-zinc-300">
+                                                                                        <span>{card.imageHeight || 'Default (192px)'}</span>
+                                                                                        {card.imageHeight && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleUpdateCardContent(card.index, { imageHeight: '' })}
+                                                                                                className="text-[9px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                                                                            >
+                                                                                                (Reset)
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
                                                                                 <input
-                                                                                    type="text"
-                                                                                    data-card-field="image"
-                                                                                    value={card.imageSrc}
-                                                                                    placeholder="Image URL..."
-                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'image')}
-                                                                                    onChange={(e) => handleUpdateCardContent(card.index, { imageSrc: e.target.value })}
-                                                                                    className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2 py-1 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none font-mono text-[11px]"
-                                                                                />
-                                                                                <input
-                                                                                    type="text"
-                                                                                    value={card.imageAlt}
-                                                                                    placeholder="Alt description..."
-                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'image')}
-                                                                                    onChange={(e) => handleUpdateCardContent(card.index, { imageAlt: e.target.value })}
-                                                                                    className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2 py-1 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none text-[11px]"
+                                                                                    type="range"
+                                                                                    min="120"
+                                                                                    max="450"
+                                                                                    step="10"
+                                                                                    value={card.imageHeight ? parseInt(card.imageHeight) || 192 : 192}
+                                                                                    onChange={(e) => handleUpdateCardContent(card.index, { imageHeight: `${e.target.value}px` })}
+                                                                                    className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
                                                                                 />
                                                                             </div>
+
+                                                                            {/* Zoom / Scale Slider */}
+                                                                            <div className="space-y-1 pt-1.5 border-t border-zinc-800/80">
+                                                                                <div className="flex items-center justify-between text-[10px]">
+                                                                                    <span className="text-zinc-400 flex items-center gap-1">
+                                                                                        <ZoomIn className="w-3 h-3 text-primary" />
+                                                                                        <span>Zoom & Crop Scale</span>
+                                                                                    </span>
+                                                                                    <div className="flex items-center gap-1.5 font-mono text-zinc-300">
+                                                                                        <span>{card.imageScale || 100}%</span>
+                                                                                        {(card.imageScale && card.imageScale !== 100) && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleUpdateCardContent(card.index, { imageScale: 100 })}
+                                                                                                className="text-[9px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                                                                            >
+                                                                                                (100%)
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <input
+                                                                                    type="range"
+                                                                                    min="100"
+                                                                                    max="200"
+                                                                                    step="5"
+                                                                                    value={card.imageScale || 100}
+                                                                                    onChange={(e) => handleUpdateCardContent(card.index, { imageScale: Number(e.target.value) })}
+                                                                                    className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                                />
+                                                                            </div>
+
+                                                                            {/* Placement (Top of Card vs Bottom of Card) */}
+                                                                            <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+                                                                                <div className="flex items-center justify-between text-[10.5px]">
+                                                                                    <span className="text-zinc-400 font-medium">Placement in Card</span>
+                                                                                    <span className="text-[9.5px] font-mono text-zinc-500 uppercase">{card.imagePlacement || 'top'}</span>
+                                                                                </div>
+                                                                                <div className="grid grid-cols-2 gap-1 p-0.5 bg-zinc-950 rounded-lg border border-zinc-800/80">
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleUpdateCardContent(card.index, { imagePlacement: 'top' })}
+                                                                                        className={`py-1 rounded text-[10px] font-medium transition-all cursor-pointer text-center ${
+                                                                                            (card.imagePlacement || 'top') === 'top'
+                                                                                                ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                                                                                                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                                                                        }`}
+                                                                                    >
+                                                                                        Top of Card
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleUpdateCardContent(card.index, { imagePlacement: 'bottom' })}
+                                                                                        className={`py-1 rounded text-[10px] font-medium transition-all cursor-pointer text-center ${
+                                                                                            card.imagePlacement === 'bottom'
+                                                                                                ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                                                                                                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                                                                        }`}
+                                                                                    >
+                                                                                        Bottom of Card
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                )}
+                                                                    )}
+                                                                </div>
 
                                                                 {/* 5. Card Appearance & Color Properties */}
                                                                 <div className="pt-2 border-t border-zinc-800/80 space-y-2">
@@ -5317,11 +6555,268 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                                                                     </div>
                                                                 </div>
 
-                                                            {/* Upload Placeholder UI */}
-                                                            <div className="p-2 bg-zinc-900/60 rounded border border-dashed border-zinc-700 text-center space-y-1">
-                                                                <Upload className="w-4 h-4 mx-auto text-zinc-400" />
-                                                                <p className="text-[10px] text-zinc-400">Upload Image</p>
-                                                                <p className="text-[9px] text-zinc-500">Direct upload coming soon. Paste any URL above or choose a stock preset.</p>
+                                                            {/* Asset Picker and Direct Upload UI */}
+                                                            <div className="pt-2 border-t border-zinc-800 space-y-2">
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setAssetPickerModal({
+                                                                            isOpen: true,
+                                                                            targetType: 'image',
+                                                                            targetIndex: img.index
+                                                                        })}
+                                                                        className="py-1.5 px-2 bg-primary/15 hover:bg-primary/25 border border-primary/30 rounded-lg text-primary text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                    >
+                                                                        <ImageIcon className="w-3.5 h-3.5" />
+                                                                        <span>Choose Asset</span>
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            targetDirectUploadRef.current = { type: 'image', index: img.index };
+                                                                            directUploadFileInputRef.current?.click();
+                                                                        }}
+                                                                        className="py-1.5 px-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-200 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                    >
+                                                                        <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                                                                        <span>Upload to R2</span>
+                                                                    </button>
+                                                                </div>
+                                                                <p className="text-[10px] text-zinc-500 text-center">
+                                                                    Max 10MB • Stored on Cloudflare R2
+                                                                </p>
+                                                            </div>
+
+                                                            {/* Figma Fit & Alignment Controls for Section Image */}
+                                                            <div className="pt-2 border-t border-zinc-800/80 space-y-3">
+                                                                {/* Fit Modes */}
+                                                                <div className="space-y-1.5">
+                                                                    <div className="flex items-center justify-between text-[10.5px]">
+                                                                        <span className="text-zinc-400 font-medium">Fit Mode</span>
+                                                                        <span className="text-[9.5px] font-mono text-zinc-500 uppercase">{img.objectFit || 'cover'}</span>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-4 gap-1 p-0.5 bg-zinc-950 rounded-lg border border-zinc-800/80">
+                                                                        {[
+                                                                            { id: 'cover', label: 'Fill', tip: 'Cover container' },
+                                                                            { id: 'contain', label: 'Fit', tip: 'Fit inside container' },
+                                                                            { id: 'none', label: 'Crop', tip: 'Original size, crop' },
+                                                                            { id: 'fill', label: 'Stretch', tip: 'Stretch to fit' }
+                                                                        ].map(mode => (
+                                                                            <button
+                                                                                key={mode.id}
+                                                                                type="button"
+                                                                                onClick={() => handleUpdateImage(img.index, { objectFit: mode.id })}
+                                                                                title={mode.tip}
+                                                                                className={`py-1 rounded text-[10px] font-medium transition-all cursor-pointer text-center ${
+                                                                                    (img.objectFit || 'cover') === mode.id
+                                                                                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                                                                                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                                                                }`}
+                                                                            >
+                                                                                {mode.label}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* 9-Point Alignment Grid & Live Position */}
+                                                                <div className="space-y-1.5">
+                                                                    <div className="flex items-center justify-between text-[10.5px]">
+                                                                        <span className="text-zinc-400 font-medium flex items-center gap-1">
+                                                                            <Move className="w-3 h-3 text-primary" />
+                                                                            <span>Figma Alignment Matrix</span>
+                                                                        </span>
+                                                                        <span className="text-[10px] font-mono text-primary font-semibold">
+                                                                            X: {img.positionX ?? 50}% Y: {img.positionY ?? 50}%
+                                                                        </span>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-3">
+                                                                        {/* 3x3 Matrix */}
+                                                                        <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-950 rounded-lg border border-zinc-800/80 w-24 h-24 shrink-0">
+                                                                            {[
+                                                                                { pos: '0% 0%', label: 'Top Left' },
+                                                                                { pos: '50% 0%', label: 'Top Center' },
+                                                                                { pos: '100% 0%', label: 'Top Right' },
+                                                                                { pos: '0% 50%', label: 'Center Left' },
+                                                                                { pos: '50% 50%', label: 'Center' },
+                                                                                { pos: '100% 50%', label: 'Center Right' },
+                                                                                { pos: '0% 100%', label: 'Bottom Left' },
+                                                                                { pos: '50% 100%', label: 'Bottom Center' },
+                                                                                { pos: '100% 100%', label: 'Bottom Right' }
+                                                                            ].map((anchor) => {
+                                                                                const isSelected = (img.objectPosition || '50% 50%').trim() === anchor.pos;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={anchor.pos}
+                                                                                        type="button"
+                                                                                        onClick={() => handleUpdateImage(img.index, { objectPosition: anchor.pos })}
+                                                                                        title={`Align ${anchor.label} (${anchor.pos})`}
+                                                                                        className={`rounded flex items-center justify-center transition-all cursor-pointer ${
+                                                                                            isSelected
+                                                                                                ? 'bg-primary text-primary-foreground ring-1 ring-primary shadow-sm'
+                                                                                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                                                                        }`}
+                                                                                    >
+                                                                                        <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white scale-125' : 'bg-zinc-600'}`} />
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+
+                                                                        {/* Canvas Pan Hint */}
+                                                                        <div className="flex-1 space-y-1.5 text-[10px] text-zinc-400 bg-zinc-950/60 p-2 rounded-lg border border-zinc-800/50 leading-relaxed">
+                                                                            <div className="text-zinc-300 font-medium flex items-center gap-1">
+                                                                                <span>💡 Canvas Drag & Pan:</span>
+                                                                            </div>
+                                                                            <p className="text-[9.5px] text-zinc-400">
+                                                                                Drag the image directly on the canvas to pan and align in real time.
+                                                                            </p>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleUpdateImage(img.index, { objectPosition: '50% 50%' })}
+                                                                                className="text-[9.5px] text-primary hover:underline flex items-center gap-1 cursor-pointer pt-0.5"
+                                                                            >
+                                                                                <RotateCcw className="w-2.5 h-2.5" />
+                                                                                <span>Reset to 50% 50%</span>
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Position Sliders (X & Y) */}
+                                                                <div className="space-y-2 pt-1 border-t border-zinc-800/80">
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center justify-between text-[10px]">
+                                                                            <span className="text-zinc-400">X Position (Horizontal)</span>
+                                                                            <span className="font-mono text-zinc-300">{img.positionX ?? 50}%</span>
+                                                                        </div>
+                                                                        <input
+                                                                            type="range"
+                                                                            min="0"
+                                                                            max="100"
+                                                                            value={img.positionX ?? 50}
+                                                                            onChange={(e) => {
+                                                                                const newX = e.target.value;
+                                                                                const curY = img.positionY ?? 50;
+                                                                                handleUpdateImage(img.index, { objectPosition: `${newX}% ${curY}%` });
+                                                                            }}
+                                                                            className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center justify-between text-[10px]">
+                                                                            <span className="text-zinc-400">Y Position (Vertical)</span>
+                                                                            <span className="font-mono text-zinc-300">{img.positionY ?? 50}%</span>
+                                                                        </div>
+                                                                        <input
+                                                                            type="range"
+                                                                            min="0"
+                                                                            max="100"
+                                                                            value={img.positionY ?? 50}
+                                                                            onChange={(e) => {
+                                                                                const curX = img.positionX ?? 50;
+                                                                                const newY = e.target.value;
+                                                                                handleUpdateImage(img.index, { objectPosition: `${curX}% ${newY}%` });
+                                                                            }}
+                                                                            className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Aspect Ratio Presets */}
+                                                                <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+                                                                    <div className="flex items-center justify-between text-[10.5px]">
+                                                                        <span className="text-zinc-400 font-medium">Aspect Ratio</span>
+                                                                        <span className="text-[9.5px] font-mono text-zinc-500">
+                                                                            {img.aspectRatio || 'Default / Auto'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-5 gap-1 p-0.5 bg-zinc-950 rounded-lg border border-zinc-800/80">
+                                                                        {[
+                                                                            { id: 'auto', label: 'Auto' },
+                                                                            { id: '16/9', label: '16:9' },
+                                                                            { id: '4/3', label: '4:3' },
+                                                                            { id: '1/1', label: '1:1' },
+                                                                            { id: '3/4', label: '3:4' }
+                                                                        ].map(ratio => {
+                                                                            const isMatch = (img.aspectRatio || 'auto') === ratio.id || (!img.aspectRatio && ratio.id === 'auto');
+                                                                            return (
+                                                                                <button
+                                                                                    key={ratio.id}
+                                                                                    type="button"
+                                                                                    onClick={() => handleUpdateImage(img.index, { aspectRatio: ratio.id === 'auto' ? '' : ratio.id })}
+                                                                                    className={`py-1 rounded text-[10px] font-medium transition-all cursor-pointer text-center ${
+                                                                                        isMatch
+                                                                                            ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                                                                                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                                                                    }`}
+                                                                                >
+                                                                                    {ratio.label}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Height Slider */}
+                                                                <div className="space-y-1 pt-1">
+                                                                    <div className="flex items-center justify-between text-[10px]">
+                                                                        <span className="text-zinc-400">Image Height</span>
+                                                                        <div className="flex items-center gap-1.5 font-mono text-zinc-300">
+                                                                            <span>{img.height || 'Auto / CSS default'}</span>
+                                                                            {img.height && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleUpdateImage(img.index, { height: '' })}
+                                                                                    className="text-[9px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                                                                >
+                                                                                    (Reset)
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <input
+                                                                        type="range"
+                                                                        min="120"
+                                                                        max="600"
+                                                                        step="10"
+                                                                        value={img.height ? parseInt(img.height) || 240 : 240}
+                                                                        onChange={(e) => handleUpdateImage(img.index, { height: `${e.target.value}px` })}
+                                                                        className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                    />
+                                                                </div>
+
+                                                                {/* Zoom / Scale Slider */}
+                                                                <div className="space-y-1 pt-1.5 border-t border-zinc-800/80">
+                                                                    <div className="flex items-center justify-between text-[10px]">
+                                                                        <span className="text-zinc-400 flex items-center gap-1">
+                                                                            <ZoomIn className="w-3 h-3 text-primary" />
+                                                                            <span>Zoom & Crop Scale</span>
+                                                                        </span>
+                                                                        <div className="flex items-center gap-1.5 font-mono text-zinc-300">
+                                                                            <span>{img.scale || 100}%</span>
+                                                                            {(img.scale && img.scale !== 100) && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleUpdateImage(img.index, { scale: 100 })}
+                                                                                    className="text-[9px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                                                                >
+                                                                                    (100%)
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <input
+                                                                        type="range"
+                                                                        min="100"
+                                                                        max="200"
+                                                                        step="5"
+                                                                        value={img.scale || 100}
+                                                                        onChange={(e) => handleUpdateImage(img.index, { scale: Number(e.target.value) })}
+                                                                        className="w-full accent-primary h-1 bg-zinc-800 rounded cursor-pointer"
+                                                                    />
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     );
@@ -5354,7 +6849,9 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                                     </div>
                                 )}
                             </div>
-                        ) : (
+                        )}
+
+                        {activeTab === 'design' && (
                             /* DESIGN PRESETS & CUSTOM COLOR PICKERS TAB */
                             <div className="space-y-6">
                                 {/* 1. Theme Presets */}
@@ -5544,6 +7041,227 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                                 </div>
                             </div>
                         )}
+
+                        {activeTab === 'assets' && (
+                            /* ASSETS MANAGEMENT TAB (Cloudflare R2) */
+                            <div className="space-y-5">
+                                {/* Header / Notice card */}
+                                <div className="p-3 bg-zinc-800/60 border border-zinc-700/60 rounded-xl space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 font-semibold text-xs text-zinc-200">
+                                            <ImageIcon className="w-3.5 h-3.5 text-primary" />
+                                            <span>Project Assets</span>
+                                        </div>
+                                        <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900/80 px-2 py-0.5 rounded-full border border-zinc-800">
+                                            {assets.length} {assets.length === 1 ? 'asset' : 'assets'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-zinc-400 leading-relaxed">
+                                        Stored securely on Cloudflare R2 cloud storage. Max <strong className="text-zinc-300 font-medium">10MB</strong> per image.
+                                    </p>
+                                    
+                                    {/* Subtle Storage Efficiency Warning */}
+                                    <div className="flex items-start gap-1.5 p-2 bg-amber-950/20 border border-amber-800/30 rounded-lg text-[10.5px] text-amber-300/90 leading-snug">
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
+                                        <span>
+                                            <strong className="font-semibold text-amber-200">Storage Efficiency:</strong> Replacing an image will automatically delete the previous file from R2.
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Upload Dropzone / Button */}
+                                <div
+                                    onClick={() => !isUploadingAsset && newAssetFileInputRef.current?.click()}
+                                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                                        isUploadingAsset
+                                            ? 'border-primary/50 bg-primary/5 cursor-wait'
+                                            : 'border-zinc-700/80 hover:border-primary/60 bg-zinc-900/40 hover:bg-zinc-850/60'
+                                    }`}
+                                >
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                                            {isUploadingAsset ? (
+                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                            ) : (
+                                                <UploadCloud className="w-5 h-5" />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-semibold text-zinc-200">
+                                                {isUploadingAsset ? 'Uploading to R2 Storage...' : 'Upload Image to R2'}
+                                            </p>
+                                            <p className="text-[10px] text-zinc-500 mt-0.5">
+                                                PNG, JPG, SVG, WebP up to 10MB
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Active Selection Quick Helper (if an image/card is selected on canvas) */}
+                                {highlightedTarget && (highlightedTarget.type === 'image' || highlightedTarget.type === 'card') && (
+                                    <div className="flex items-center justify-between p-2.5 bg-primary/10 border border-primary/25 rounded-xl text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                            <span className="text-zinc-200 text-[11px]">
+                                                Ready to assign to: <strong className="text-primary font-semibold capitalize">{highlightedTarget.type} #{highlightedTarget.index + 1}</strong>
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Search & Filter Bar */}
+                                <div className="space-y-2">
+                                    <div className="relative">
+                                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+                                        <input
+                                            type="text"
+                                            value={assetSearchQuery}
+                                            onChange={(e) => setAssetSearchQuery(e.target.value)}
+                                            placeholder="Search assets by name or tag..."
+                                            className="w-full pl-8 pr-7 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                                        />
+                                        {assetSearchQuery && (
+                                            <button
+                                                onClick={() => setAssetSearchQuery('')}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Asset Grid / List */}
+                                {filteredAssets.length === 0 ? (
+                                    <div className="py-8 text-center text-zinc-500 space-y-2 bg-zinc-900/30 rounded-xl border border-zinc-800/60 p-4">
+                                        <FileImage className="w-8 h-8 mx-auto text-zinc-600" />
+                                        <p className="text-xs text-zinc-400">
+                                            {assetSearchQuery ? 'No matching assets found.' : 'No assets uploaded yet.'}
+                                        </p>
+                                        <p className="text-[10px] text-zinc-500">
+                                            Upload pictures to use anywhere across your website pages.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {filteredAssets.map((asset) => {
+                                            const assetUrl = resolveAssetUrl(asset);
+                                            return (
+                                                <div
+                                                    key={asset.id}
+                                                    draggable={true}
+                                                    onDragStart={(e) => {
+                                                        e.dataTransfer.setData('application/json', JSON.stringify({
+                                                            assetUrl: assetUrl,
+                                                            assetName: asset.name,
+                                                            assetId: asset.id
+                                                        }));
+                                                        e.dataTransfer.setData('text/plain', assetUrl);
+                                                        e.dataTransfer.effectAllowed = 'copy';
+                                                    }}
+                                                    className="p-2.5 rounded-xl bg-zinc-900/70 border border-zinc-800 hover:border-primary/50 transition-all space-y-2 group cursor-grab active:cursor-grabbing hover:shadow-lg select-none"
+                                                    title="Drag onto any card or image on the canvas to apply"
+                                                >
+                                                    <div className="flex gap-3">
+                                                        {/* Thumbnail */}
+                                                        <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 shrink-0 flex items-center justify-center">
+                                                            {assetUrl ? (
+                                                                <img
+                                                                    src={assetUrl}
+                                                                    alt={asset.name}
+                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                                                    onError={(e) => {
+                                                                        e.currentTarget.style.display = 'none';
+                                                                        const fb = e.currentTarget.parentElement?.querySelector('.fallback-sidebar-thumb');
+                                                                        if (fb) fb.classList.remove('hidden');
+                                                                    }}
+                                                                />
+                                                            ) : null}
+                                                            <div className={`fallback-sidebar-thumb ${assetUrl ? 'hidden' : ''} flex flex-col items-center justify-center text-zinc-600`}>
+                                                                <FileImage className="w-6 h-6" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Details */}
+                                                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                                                            <div>
+                                                                <h4 className="text-xs font-semibold text-zinc-200 truncate" title={asset.name}>
+                                                                    {asset.name}
+                                                                </h4>
+                                                                {asset.description ? (
+                                                                    <p className="text-[10.5px] text-zinc-400 truncate mt-0.5" title={asset.description}>
+                                                                        {asset.description}
+                                                                    </p>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-zinc-500 italic">No description</span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center justify-between text-[9.5px] text-zinc-500 font-mono">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span>R2 Stored</span>
+                                                                    <span>•</span>
+                                                                    <span>{new Date(asset.created_at).toLocaleDateString()}</span>
+                                                                </div>
+                                                                <span className="text-[9px] text-primary font-medium flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
+                                                                    <Move className="w-2.5 h-2.5" /> Drag to canvas
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Action Buttons */}
+                                                    <div className="grid grid-cols-4 gap-1 pt-1.5 border-t border-zinc-800/80">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => applyAssetToTarget(assetUrl, asset.name)}
+                                                            className="py-1 px-1.5 bg-primary/15 hover:bg-primary/25 border border-primary/30 rounded text-primary text-[10px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer col-span-2"
+                                                            title="Apply to active selection or copy URL"
+                                                        >
+                                                            <Check className="w-3 h-3 shrink-0" />
+                                                            <span className="truncate">
+                                                                {highlightedTarget && (highlightedTarget.type === 'image' || highlightedTarget.type === 'card')
+                                                                    ? 'Apply to Selection'
+                                                                    : 'Copy URL'}
+                                                            </span>
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setAssetToReplace(asset)}
+                                                            className="py-1 px-1 bg-amber-950/20 hover:bg-amber-900/30 border border-amber-800/30 text-amber-400 rounded text-[10px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                                                            title="Replace file (automatically deletes old file from R2)"
+                                                        >
+                                                            <RefreshCw className="w-2.5 h-2.5 shrink-0" />
+                                                            <span>Replace</span>
+                                                        </button>
+
+                                                        <div className="flex items-center gap-1 justify-end">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setEditingAsset(asset)}
+                                                                className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition-colors cursor-pointer"
+                                                                title="Edit Details"
+                                                            >
+                                                                <Edit2 className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteAsset(asset)}
+                                                                className="p-1 bg-red-950/30 hover:bg-red-900/40 text-red-400 rounded border border-red-800/30 transition-colors cursor-pointer"
+                                                                title="Delete from R2"
+                                                            >
+                                                                <Trash2 className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </aside>
             </div>
@@ -5600,6 +7318,19 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     <Palette className="w-4 h-4 mb-0.5" />
                     <span>Themes</span>
                 </button>
+                <button
+                    onClick={() => {
+                        setIsRightSidebarOpen(true);
+                        setIsLeftSidebarOpen(false);
+                        setActiveTab('assets');
+                    }}
+                    className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${
+                        isRightSidebarOpen && activeTab === 'assets' ? 'text-primary bg-primary/10 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    <ImageIcon className="w-4 h-4 mb-0.5" />
+                    <span>Assets</span>
+                </button>
             </nav>
 
             {/* Icon Picker Modal */}
@@ -5616,6 +7347,365 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                 allowContainerStyle={iconPickerTarget?.allowContainerStyle}
                 initialContainerStyle={iconPickerTarget?.currentContainerStyle || 'badge-soft'}
                 themeColors={currentColors}
+            />
+
+            {/* Asset Picker Modal */}
+            {assetPickerModal?.isOpen && (
+                <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+                        {/* Modal Header */}
+                        <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-zinc-900/90">
+                            <div className="flex items-center gap-2">
+                                <ImageIcon className="w-5 h-5 text-primary" />
+                                <div>
+                                    <h3 className="text-sm font-bold text-zinc-100">
+                                        Select Image Asset
+                                    </h3>
+                                    <p className="text-[11px] text-zinc-400">
+                                        Applying to {assetPickerModal.targetType === 'image' ? 'Section Image' : 'Card Image'} • Max 10MB per image
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        targetDirectUploadRef.current = {
+                                            type: assetPickerModal.targetType,
+                                            index: assetPickerModal.targetIndex
+                                        };
+                                        directUploadFileInputRef.current?.click();
+                                    }}
+                                    className="py-1 px-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                    <Upload className="w-3.5 h-3.5 text-zinc-400" />
+                                    <span>Upload New</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAssetPickerModal(null)}
+                                    className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Search */}
+                        <div className="p-3 border-b border-zinc-800 shrink-0 bg-zinc-950/40">
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                                <input
+                                    type="text"
+                                    value={assetSearchQuery}
+                                    onChange={(e) => setAssetSearchQuery(e.target.value)}
+                                    placeholder="Search assets by name or tag..."
+                                    className="w-full pl-9 pr-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-primary"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Modal Body: Assets Grid */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {filteredAssets.length === 0 ? (
+                                <div className="py-16 text-center text-zinc-500 space-y-3">
+                                    <FileImage className="w-12 h-12 mx-auto text-zinc-600" />
+                                    <p className="text-xs text-zinc-300 font-medium">
+                                        {assetSearchQuery ? 'No matching assets found' : 'No assets uploaded yet'}
+                                    </p>
+                                    <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                                        Click "Upload New" above to upload an image from your computer directly to Cloudflare R2.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+                                    {filteredAssets.map((asset) => {
+                                        const assetUrl = resolveAssetUrl(asset);
+                                        return (
+                                            <div
+                                                key={asset.id}
+                                                onClick={() => applyAssetToTarget(assetUrl, asset.name)}
+                                                className="group relative border border-zinc-800 hover:border-primary/80 rounded-xl overflow-hidden bg-zinc-950/70 cursor-pointer transition-all hover:shadow-xl flex flex-col"
+                                            >
+                                                <div className="h-32 w-full overflow-hidden bg-zinc-950 relative flex items-center justify-center">
+                                                    {assetUrl ? (
+                                                        <img
+                                                            src={assetUrl}
+                                                            alt={asset.name}
+                                                            loading="lazy"
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                            onError={(e) => {
+                                                                e.currentTarget.style.display = 'none';
+                                                                const fb = e.currentTarget.parentElement?.querySelector('.fallback-picker-img');
+                                                                if (fb) fb.classList.remove('hidden');
+                                                            }}
+                                                        />
+                                                    ) : null}
+                                                    <div className={`fallback-picker-img ${assetUrl ? 'hidden' : ''} flex flex-col items-center justify-center text-zinc-500 p-2 text-center`}>
+                                                        <FileImage className="w-8 h-8 mb-1 text-zinc-600" />
+                                                        <span className="text-[10px] text-zinc-400 truncate max-w-[120px]">{asset.name}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="p-2.5 bg-zinc-900 border-t border-zinc-800/80 flex-1 flex flex-col justify-between">
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-zinc-200 truncate" title={asset.name}>
+                                                            {asset.name}
+                                                        </p>
+                                                        {asset.description ? (
+                                                            <p className="text-[10px] text-zinc-400 truncate mt-0.5" title={asset.description}>
+                                                                {asset.description}
+                                                            </p>
+                                                        ) : (
+                                                            <span className="text-[10px] text-zinc-500 italic">No description</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center justify-between mt-2 pt-1 border-t border-zinc-800/50 text-[9.5px] text-zinc-500 font-mono">
+                                                        <span>R2</span>
+                                                        <span className="text-primary font-sans font-semibold group-hover:underline">Select</span>
+                                                    </div>
+                                                </div>
+                                                <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none">
+                                                    <span className="px-3 py-1 bg-primary text-primary-foreground text-xs font-bold rounded-lg shadow-lg">
+                                                        Select Image
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3 border-t border-zinc-800 bg-zinc-950/40 flex items-center justify-between text-[11px] text-zinc-500">
+                            <span>Cloudflare R2 storage • Max 10MB per file</span>
+                            <button
+                                type="button"
+                                onClick={() => setAssetPickerModal(null)}
+                                className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md text-xs font-medium cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Replace Asset Modal with Subtle Warning */}
+            {assetToReplace && (
+                <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                            <div className="flex items-center gap-2">
+                                <RefreshCw className="w-4 h-4 text-amber-400" />
+                                <h3 className="text-sm font-bold text-zinc-100">Replace Image Asset</h3>
+                            </div>
+                            <button
+                                onClick={() => setAssetToReplace(null)}
+                                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg cursor-pointer"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Subtle Storage Efficiency Notice */}
+                        <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-xl space-y-1 text-xs text-amber-300">
+                            <div className="flex items-center gap-1.5 font-semibold text-amber-200">
+                                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span>Storage Efficiency Notice</span>
+                            </div>
+                            <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                                Replacing <strong>"{assetToReplace.name}"</strong> will upload your new image and <span className="underline decoration-amber-400 font-medium">permanently delete the previous file</span> from Cloudflare R2 storage to keep your usage minimal.
+                            </p>
+                            <p className="text-[10px] text-zinc-400 mt-1">
+                                Max size: <strong>10MB</strong>. Current references in your website canvas will automatically update.
+                            </p>
+                        </div>
+
+                        {/* Current Asset Info */}
+                        <div className="flex items-center gap-3 p-2 bg-zinc-800/40 rounded-xl border border-zinc-800">
+                            <div className="w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 flex items-center justify-center">
+                                {resolveAssetUrl(assetToReplace) ? (
+                                    <img
+                                        src={resolveAssetUrl(assetToReplace)}
+                                        alt={assetToReplace.name}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                            const fb = e.currentTarget.parentElement?.querySelector('.fallback-replace-thumb');
+                                            if (fb) fb.classList.remove('hidden');
+                                        }}
+                                    />
+                                ) : null}
+                                <div className={`fallback-replace-thumb ${resolveAssetUrl(assetToReplace) ? 'hidden' : ''} text-zinc-600`}>
+                                    <FileImage className="w-6 h-6" />
+                                </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-zinc-200 truncate">{assetToReplace.name}</p>
+                                <p className="text-[11px] text-zinc-400 truncate">{assetToReplace.description || 'No description'}</p>
+                                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Asset ID #{assetToReplace.id}</p>
+                            </div>
+                        </div>
+
+                        {/* File Selector Dropzone */}
+                        <div
+                            onClick={() => !isReplacingAsset && replaceAssetFileInputRef.current?.click()}
+                            className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
+                                isReplacingAsset
+                                    ? 'border-amber-500/50 bg-amber-950/10 cursor-wait'
+                                    : 'border-zinc-700 hover:border-amber-500/70 bg-zinc-950/40 hover:bg-zinc-850/40'
+                            }`}
+                        >
+                            {isReplacingAsset ? (
+                                <div className="flex flex-col items-center gap-2">
+                                    <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                                    <p className="text-xs font-semibold text-zinc-200">Replacing on R2 Storage...</p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center gap-1.5">
+                                    <Upload className="w-5 h-5 text-amber-400" />
+                                    <p className="text-xs font-semibold text-zinc-200">Choose Replacement Image</p>
+                                    <p className="text-[10px] text-zinc-400">Click to browse file (Max 10MB)</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-1 border-t border-zinc-800">
+                            <button
+                                type="button"
+                                onClick={() => setAssetToReplace(null)}
+                                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Asset Metadata Modal */}
+            {editingAsset && (
+                <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                            <div className="flex items-center gap-2">
+                                <Edit2 className="w-4 h-4 text-primary" />
+                                <h3 className="text-sm font-bold text-zinc-100">Edit Asset Details</h3>
+                            </div>
+                            <button
+                                onClick={() => setEditingAsset(null)}
+                                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg cursor-pointer"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-3 p-2 bg-zinc-800/40 rounded-xl border border-zinc-800">
+                            <div className="w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 flex items-center justify-center">
+                                {resolveAssetUrl(editingAsset) ? (
+                                    <img
+                                        src={resolveAssetUrl(editingAsset)}
+                                        alt={editingAsset.name}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                            const fb = e.currentTarget.parentElement?.querySelector('.fallback-edit-thumb');
+                                            if (fb) fb.classList.remove('hidden');
+                                        }}
+                                    />
+                                ) : null}
+                                <div className={`fallback-edit-thumb ${resolveAssetUrl(editingAsset) ? 'hidden' : ''} text-zinc-600`}>
+                                    <FileImage className="w-6 h-6" />
+                                </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <span className="text-[10px] text-zinc-500 font-mono">Asset ID #{editingAsset.id}</span>
+                                <p className="text-xs font-semibold text-zinc-200 truncate">{editingAsset.name}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs font-medium text-zinc-400 block mb-1">Asset Name / Title</label>
+                                <input
+                                    type="text"
+                                    value={editingAsset.name}
+                                    onChange={(e) => setEditingAsset({ ...editingAsset, name: e.target.value })}
+                                    className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-primary"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-zinc-400 block mb-1">Description / Section Tag</label>
+                                <textarea
+                                    rows={2}
+                                    value={editingAsset.description || ''}
+                                    onChange={(e) => setEditingAsset({ ...editingAsset, description: e.target.value })}
+                                    placeholder="e.g. Hero background image, Team member portrait, Feature illustration"
+                                    className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-primary resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                            <button
+                                type="button"
+                                onClick={() => setEditingAsset(null)}
+                                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleUpdateAssetMetadata(editingAsset.id, editingAsset.name, editingAsset.description || '')}
+                                className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold cursor-pointer"
+                            >
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Hidden File Inputs for Asset Operations */}
+            <input
+                ref={newAssetFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                        handleUploadAsset(file);
+                        e.target.value = '';
+                    }
+                }}
+            />
+            <input
+                ref={replaceAssetFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && assetToReplace) {
+                        handleReplaceAsset(assetToReplace, file);
+                        e.target.value = '';
+                    }
+                }}
+            />
+            <input
+                ref={directUploadFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                        handleDirectUploadForTarget(file);
+                        e.target.value = '';
+                    }
+                }}
             />
         </div>
     );

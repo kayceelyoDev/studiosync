@@ -25,6 +25,17 @@ class GeneratePromptServices
 
         try {
             $parsed = $this->parsePreferences($preferences);
+            $parsed['assets'] = $project->projectAssets()->get()->map(function ($asset) {
+                return [
+                    'id' => $asset->id,
+                    'name' => $asset->name,
+                    'description' => $asset->description,
+                    'url' => $asset->url,
+                    'path' => $asset->path,
+                    'type' => $asset->type,
+                ];
+            })->values()->all();
+
             $specRequest = $this->buildSpecRequest($parsed, $projectName);
             $specResponse = (new WebsiteSpecArchitect)->prompt($specRequest);
             $spec = $specResponse->toArray();
@@ -126,6 +137,16 @@ class GeneratePromptServices
 
         $colorGuidance = WebsitePreferenceRules::getColorPaletteInstructions($colorPalette);
 
+        $assetsSummary = '';
+        if (! empty($parsed['assets'])) {
+            $assetLines = [];
+            foreach ($parsed['assets'] as $asset) {
+                $desc = $asset['description'] ?: 'General image';
+                $assetLines[] = "- {$desc} (File: {$asset['name']})";
+            }
+            $assetsSummary = "\nUSER-PROVIDED ASSETS (IMAGES):\n".implode("\n", $assetLines)."\n";
+        }
+
         return <<<PROMPT
 Analyze these user preferences and produce a structured website specification for "{$projectName}".
 
@@ -135,7 +156,7 @@ Color palette: {$colorPalette}
 Typography: {$typography}
 Content sections requested: {$contentSections}
 Description: {$parsed['description']}
-
+{$assetsSummary}
 INSTRUCTIONS:
 1. Set siteType based on the description and requested content.
 2. Decompose the content sections into individual sections with unique kebab-case ids, the correct type enum value, and a priority (1 = first on page). Always include nav (priority 1) and footer (last). For Bento Box UI layouts, ensure at least 6 content sections.
@@ -144,6 +165,7 @@ INSTRUCTIONS:
 4. For theme.typeScale — map "{$typography}" to compact, standard, editorial, or display.
 5. For theme.layoutStyle — use "{$layout}" exactly as written.
 6. For copy — write short, relevant copy for each section based on the description and user preferences. Use real-sounding content, not lorem ipsum.
+7. Where user-provided assets are listed, incorporate them into the planned sections and write tailored copy that references those visuals.
 PROMPT;
     }
 
@@ -254,6 +276,7 @@ PROMPT;
         $iconInstructions = WebsitePreferenceRules::getIconInstructions($typography);
         $layoutHints = $this->getSectionLayoutHints($section['type'], $layout);
         $userData = $this->getUserDataForSection($section['type'], $parsed);
+        $assetsGuidance = $this->getAssetsForSection($section['type'], $section['id'], $parsed);
 
         $navRules = '';
         if ($section['type'] === 'nav') {
@@ -310,7 +333,7 @@ LAYOUT CONTEXT — "{$layout}":
 CONTENT FOR THIS SECTION:
 {$sectionCopy}
 
-{$userData}{$navRules}
+{$userData}{$navRules}{$assetsGuidance}
 ENHANCED DESIGN PATTERNS:
 - Add generous spacing: use large padding (`py-16`, `py-24` or `py-32`) for sections to let content breathe.
 - Use advanced Tailwind classes for a premium look: `backdrop-blur-sm`, `bg-opacity`, subtle gradients, or `ring` for focus states.
@@ -332,7 +355,8 @@ OUTPUT RULES:
 - Use Tailwind CSS utility classes.
 - Use inline SVG icons, NEVER emojis.
 - Ensure full responsiveness: use fluid widths (e.g., `w-full`) on mobile. NEVER use fixed pixel widths or min-widths (like `w-[350px]`) on mobile. Rely on `flex-col` for mobile and `md:flex-row` for desktop. Use `break-words` on headings.
-- Use high-quality placeholders from `https://picsum.photos/seed/{random_word}/800/600` styled elegantly.
+- MANDATORY IMAGE USAGE: If USER-PROVIDED ASSETS are listed above for this section, you MUST use their exact Direct URLs in `<img src="...">` tags or background-image styles.
+- Only for visual elements where no matching user asset was provided, use high-quality placeholders from `https://picsum.photos/seed/{random_word}/800/600` styled elegantly.
 PROMPT;
     }
 
@@ -402,21 +426,21 @@ PROMPT;
     {
         return match ($sectionType) {
             'about' => $this->formatUserData([
-                'Bio' => $parsed['aboutBio'],
-                'Description' => $parsed['description'],
+                'Bio' => $parsed['aboutBio'] ?? '',
+                'Description' => $parsed['description'] ?? '',
             ]),
             'contact' => $this->formatUserData([
-                'Email' => $parsed['contactEmail'],
-                'Phone' => $parsed['contactPhone'],
-                'Address' => $parsed['contactAddress'],
-                'Social Links' => $parsed['socialLinks'],
+                'Email' => $parsed['contactEmail'] ?? '',
+                'Phone' => $parsed['contactPhone'] ?? '',
+                'Address' => $parsed['contactAddress'] ?? '',
+                'Social Links' => $parsed['socialLinks'] ?? '',
             ]),
             'footer' => $this->formatUserData([
-                'Email' => $parsed['contactEmail'],
-                'Social Links' => $parsed['socialLinks'],
+                'Email' => $parsed['contactEmail'] ?? '',
+                'Social Links' => $parsed['socialLinks'] ?? '',
             ]),
             'hero' => $this->formatUserData([
-                'Description' => $parsed['description'],
+                'Description' => $parsed['description'] ?? '',
             ]),
             default => '',
         };
@@ -441,6 +465,72 @@ PROMPT;
         }
 
         return "USER DATA (inject these real values):\n".implode("\n", $lines);
+    }
+
+    /**
+     * Return user-uploaded assets relevant to this specific section.
+     *
+     * @param  array<string, mixed>  $parsed
+     */
+    private function getAssetsForSection(string $sectionType, string $sectionId, array $parsed): string
+    {
+        $allAssets = $parsed['assets'] ?? [];
+        if (empty($allAssets)) {
+            return '';
+        }
+
+        $matchedAssets = [];
+        foreach ($allAssets as $asset) {
+            $sectionVal = strtolower($asset['section'] ?? '');
+            $purposeVal = strtolower($asset['purpose'] ?? '');
+            $customVal = strtolower($asset['custom_purpose'] ?? '');
+            $descVal = strtolower($asset['description'] ?? '');
+            $assetContext = "{$sectionVal} {$purposeVal} {$customVal} {$descVal}";
+
+            $typeLower = strtolower($sectionType);
+            $idLower = strtolower($sectionId);
+
+            $isMatch = false;
+
+            if (str_contains($assetContext, $typeLower) || str_contains($assetContext, $idLower)) {
+                $isMatch = true;
+            } elseif ($sectionType === 'nav' && (str_contains($assetContext, 'logo') || str_contains($assetContext, 'brand') || str_contains($assetContext, 'navigation'))) {
+                $isMatch = true;
+            } elseif ($sectionType === 'hero' && (str_contains($assetContext, 'hero') || str_contains($assetContext, 'banner') || str_contains($assetContext, 'logo') || str_contains($assetContext, 'profile'))) {
+                $isMatch = true;
+            } elseif ($sectionType === 'about' && (str_contains($assetContext, 'about') || str_contains($assetContext, 'profile') || str_contains($assetContext, 'team') || str_contains($assetContext, 'avatar') || str_contains($assetContext, 'headshot'))) {
+                $isMatch = true;
+            } elseif (in_array($sectionType, ['gallery', 'portfolio']) && (str_contains($assetContext, 'gallery') || str_contains($assetContext, 'portfolio') || str_contains($assetContext, 'product') || str_contains($assetContext, 'showcase') || str_contains($assetContext, 'work'))) {
+                $isMatch = true;
+            } elseif (in_array($sectionType, ['services', 'features']) && (str_contains($assetContext, 'service') || str_contains($assetContext, 'feature') || str_contains($assetContext, 'product'))) {
+                $isMatch = true;
+            } elseif ($sectionType === 'footer' && (str_contains($assetContext, 'logo') || str_contains($assetContext, 'brand'))) {
+                $isMatch = true;
+            }
+
+            if ($isMatch) {
+                $matchedAssets[] = $asset;
+            }
+        }
+
+        if (empty($matchedAssets)) {
+            return '';
+        }
+
+        $output = "\n\nUSER-PROVIDED ASSETS FOR THIS SECTION (MANDATORY TO USE):\n";
+        $output .= "The user has uploaded real images specifically for this section. You MUST use these exact public image URLs in your <img> tags or background styling instead of placeholder images:\n";
+
+        foreach ($matchedAssets as $asset) {
+            $contextParts = array_filter([$asset['purpose'] ?? null, $asset['custom_purpose'] ?? null, $asset['description'] ?? null]);
+            $contextText = ! empty($contextParts) ? implode(' - ', $contextParts) : 'Uploaded image';
+
+            $output .= "- Image File: \"{$asset['name']}\"\n";
+            $output .= "  Description/Context: {$contextText}\n";
+            $output .= "  Direct URL: {$asset['url']}\n";
+            $output .= "  Embedding Instruction: Embed using `<img src=\"{$asset['url']}\" alt=\"...\" class=\"...\">`.\n";
+        }
+
+        return $output;
     }
 
     // =========================================================================

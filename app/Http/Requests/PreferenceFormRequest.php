@@ -45,6 +45,26 @@ class PreferenceFormRequest extends FormRequest
             'workspace_id' => 'required|exists:workspaces,id',
             'project_name' => 'required|string|max:255',
             'preferences' => 'required|array|min:1',
+            'assets' => 'nullable|array',
+            'assets.*.file' => 'required|file|image|max:10240',
+            'assets.*.section' => 'required|string|max:100',
+            'assets.*.purpose' => 'required|string|max:100',
+            'assets.*.custom_purpose' => 'nullable|string|max:255',
+            'assets.*.description' => 'nullable|string|max:500',
+        ];
+    }
+
+    /**
+     * Get custom error messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'assets.*.file.max' => 'Each image must not exceed 10MB.',
+            'assets.*.file.image' => 'The uploaded file must be an image (PNG, JPG, WEBP, or SVG).',
+            'assets.*.file.required' => 'An image file is required for each asset entry.',
         ];
     }
 }

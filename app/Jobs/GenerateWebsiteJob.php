@@ -45,6 +45,17 @@ class GenerateWebsiteJob implements ShouldQueue
         }
 
         $parsed = $services->parsePreferences($this->project->preferences ?? []);
+        $parsed['assets'] = $this->project->projectAssets()->get()->map(function ($asset) {
+            return [
+                'id' => $asset->id,
+                'name' => $asset->name,
+                'description' => $asset->description,
+                'url' => $asset->url,
+                'path' => $asset->path,
+                'type' => $asset->type,
+            ];
+        })->values()->all();
+
         $sections = collect($spec['sections'])->sortBy('priority')->values()->all();
         $sectionIndices = array_keys($sections);
 

@@ -49,6 +49,11 @@ class Project extends Model
         return $this->hasManyThrough(ProjectAsset::class, AssetFolder::class);
     }
 
+    public function projectAssets(): HasMany
+    {
+        return $this->hasMany(ProjectAsset::class);
+    }
+
     /**
      * Update and persist the project's HTML content and optionally its name.
      */
