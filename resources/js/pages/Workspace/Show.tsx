@@ -88,9 +88,16 @@ export default function ShowWorkspace({ workspace, projects }: { workspace: Work
                                     <p className="text-xs text-muted-foreground">
                                         {new Date(project.created_at).toLocaleDateString()}
                                     </p>
-                                    <Link href={`/projects/${project.id}`} className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-                                        View Details &rarr;
-                                    </Link>
+                                    <div className="flex items-center gap-3">
+                                        {(project.status === 'completed' || project.status === 'active') && (
+                                            <Link href={`/projects/${project.id}/edit`} className="text-sm font-medium text-primary hover:underline">
+                                                Edit
+                                            </Link>
+                                        )}
+                                        <Link href={`/projects/${project.id}`} className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                                            View Details &rarr;
+                                        </Link>
+                                    </div>
                                 </div>
                             </div>
                         ))}

@@ -273,8 +273,8 @@ NAV;
         } else {
             $navRules = "\nCRITICAL: DO NOT INCLUDE A NAVIGATION BAR OR HEADER in this section. A global site navigation has already been generated separately. Start directly with the {$section['type']} content.";
         }
-        $contentSectionIds = implode(', ', array_filter(array_column($spec['sections'], 'id'), function($id) {
-            return !in_array($id, ['nav', 'hero', 'header', 'footer']);
+        $contentSectionIds = implode(', ', array_filter(array_column($spec['sections'], 'id'), function ($id) {
+            return ! in_array($id, ['nav', 'hero', 'header', 'footer']);
         }));
 
         return <<<PROMPT
@@ -962,7 +962,7 @@ PROMPT;
 
         if (! $this->matchesSelectedLayout($cleanHtml, $this->parsePreferences($project->preferences ?? [])['layout'])) {
             Log::warning('Generated HTML did not satisfy the selected page layout perfectly, but saving anyway to prevent queue failure.', [
-                'project_id' => $project->id
+                'project_id' => $project->id,
             ]);
         }
 
