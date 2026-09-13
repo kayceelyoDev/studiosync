@@ -48,4 +48,15 @@ class Project extends Model
     {
         return $this->hasManyThrough(ProjectAsset::class, AssetFolder::class);
     }
+
+    /**
+     * Update and persist the project's HTML content and optionally its name.
+     */
+    public function updateHtmlContent(string $htmlContent, ?string $projectName = null): bool
+    {
+        return $this->update([
+            'html_content' => $htmlContent,
+            'project_name' => $projectName ?? $this->project_name,
+        ]);
+    }
 }

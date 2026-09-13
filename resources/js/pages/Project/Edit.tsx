@@ -48,8 +48,12 @@ import {
     Copy,
     MousePointer,
     ChevronRight,
-    Tag
+    Tag,
+    Smile,
+    PanelLeft,
+    PanelRight
 } from 'lucide-react';
+import { IconPickerModal } from '@/components/IconPickerModal';
 
 interface Project {
     id: number;
@@ -87,6 +91,8 @@ interface EditableParagraph {
     tag?: string;
     text: string;
     color?: string;
+    hasIcon?: boolean;
+    iconSvg?: string;
 }
 
 interface EditableLink {
@@ -99,6 +105,9 @@ interface EditableLink {
     color?: string;
     borderColor?: string;
     isButton?: boolean;
+    hasIcon?: boolean;
+    iconSvg?: string;
+    iconPosition?: 'left' | 'right';
 }
 
 interface EditableImage {
@@ -110,10 +119,16 @@ interface EditableImage {
 interface EditableCard {
     index: number;
     label: string;
+    hasIcon?: boolean;
+    iconSvg?: string;
+    iconColor?: string;
+    iconBg?: string;
     hasBadge?: boolean;
     badge?: string;
     badgeColor?: string;
     badgeBg?: string;
+    badgeHasIcon?: boolean;
+    badgeIconSvg?: string;
     title: string;
     titleTag: string;
     titleColor?: string;
@@ -125,6 +140,9 @@ interface EditableCard {
     buttonBg?: string;
     buttonColor?: string;
     isButton?: boolean;
+    buttonHasIcon?: boolean;
+    buttonIconSvg?: string;
+    buttonIconPosition?: 'left' | 'right';
     imageSrc: string;
     imageAlt: string;
     backgroundColor?: string;
@@ -381,6 +399,20 @@ export default function ProjectEdit({ project }: { project: Project }) {
     const [projectName, setProjectName] = useState<string>(project.project_name || 'Untitled Project');
     const [isRenaming, setIsRenaming] = useState<boolean>(false);
 
+    // Responsive sidebar toggles (layers panel and inspector panel)
+    const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            return window.innerWidth >= 1280;
+        }
+        return true;
+    });
+    const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            return window.innerWidth >= 1024;
+        }
+        return true;
+    });
+
     // Layers & Selected Section
     const [layers, setLayers] = useState<LayerSection[]>([]);
     const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
@@ -390,8 +422,22 @@ export default function ProjectEdit({ project }: { project: Project }) {
     const [highlightedTarget, setHighlightedTarget] = useState<{
         type: 'heading' | 'paragraph' | 'link' | 'image' | 'card' | 'section';
         index: number;
-        subField?: 'title' | 'description' | 'button' | 'image' | 'badge' | 'card';
+        subField?: 'title' | 'description' | 'button' | 'image' | 'badge' | 'card' | 'icon';
         timestamp: number;
+    } | null>(null);
+
+    // Icon Picker Modal State
+    const [iconPickerTarget, setIconPickerTarget] = useState<{
+        type: 'card' | 'link' | 'card-button' | 'card-badge' | 'paragraph';
+        cardIndex?: number;
+        linkIndex?: number;
+        paragraphIndex?: number;
+        currentSvg?: string;
+        currentPosition?: 'left' | 'right';
+        currentContainerStyle?: 'none' | 'badge-soft' | 'badge-outline' | 'circle';
+        label: string;
+        allowPosition?: boolean;
+        allowContainerStyle?: boolean;
     } | null>(null);
 
     // References
@@ -617,7 +663,7 @@ const getCardCandidates = (sectionEl: HTMLElement): HTMLElement[] => {
                 sib !== parent && parent.contains(sib) &&
                 (!!sib.querySelector('h1, h2, h3, h4, h5, h6, p, a, button') || (sib.textContent || '').trim().length > 30)
             );
-            if (parentChildren < 2) {
+            if (parentChildren.length < 2) {
                 // Parent is a single card containing cand as an inner child
                 return true;
             }
@@ -651,6 +697,44 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         });
 };
 
+// Helper to accurately extract standalone buttons and links outside cards (ensuring 100% index parity everywhere)
+const getStandaloneLinks = (sectionEl: HTMLElement, cards: HTMLElement[]): HTMLElement[] => {
+    return Array.from(sectionEl.querySelectorAll<HTMLElement>('a, button, [role="button"]'))
+        .filter(el => {
+            if (cards.some(c => c.contains(el))) return false;
+            if (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'hidden') return false;
+            const text = (el.textContent || '').trim();
+            const href = el.getAttribute('href');
+            const hasSvg = !!el.querySelector('svg');
+            const hasImg = !!el.querySelector('img');
+            return text.length > 0 || !!href || hasSvg || hasImg;
+        });
+};
+
+// Helper to safely update button/badge/link text while preserving any embedded <svg> icon
+const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
+    const existingSvg = el.querySelector('svg');
+    if (!existingSvg) {
+        el.textContent = newText;
+        return;
+    }
+    const isSvgFirst = el.firstElementChild === existingSvg || (el.childNodes.length > 1 && el.childNodes[0] === existingSvg);
+    const span = el.querySelector('span');
+    if (span && span !== (existingSvg as any) && !span.contains(existingSvg)) {
+        span.textContent = newText;
+    } else {
+        const svgClone = existingSvg.cloneNode(true) as SVGElement;
+        el.innerHTML = '';
+        if (isSvgFirst) {
+            el.appendChild(svgClone);
+            el.appendChild(el.ownerDocument.createTextNode(' ' + newText.trim()));
+        } else {
+            el.appendChild(el.ownerDocument.createTextNode(newText.trim() + ' '));
+            el.appendChild(svgClone);
+        }
+    }
+};
+
     // Parse the current selected section's content (headings, paragraphs, links, images, and rich cards)
     const selectedSectionData: SectionData | null = useMemo(() => {
         if (!selectedSectionId || !html) return null;
@@ -674,6 +758,38 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 const imgEl = el.querySelector('img') as HTMLImageElement | null;
                 const badgeEl = el.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') as HTMLElement | null;
 
+                // Card Icon detection (SVG not in button or badge)
+                const cardSvgs = Array.from(el.querySelectorAll('svg')).filter(svg => {
+                    if (buttonEl && buttonEl.contains(svg)) return false;
+                    if (badgeEl && badgeEl.contains(svg)) return false;
+                    return true;
+                });
+                const cardIconSvgEl = cardSvgs[0] as SVGElement | null;
+                const hasCardIcon = !!cardIconSvgEl;
+                const cardIconSvg = cardIconSvgEl ? cardIconSvgEl.outerHTML : '';
+                const cardIconWrapper = cardIconSvgEl?.parentElement && cardIconSvgEl.parentElement !== el && cardIconSvgEl.parentElement.children.length === 1
+                    ? cardIconSvgEl.parentElement as HTMLElement
+                    : null;
+                const cardIconBg = cardIconWrapper?.style.backgroundColor || '';
+                const cardIconColor = (cardIconSvgEl as HTMLElement)?.style.color || '';
+
+                // Card Button Icon detection
+                const btnSvg = buttonEl?.querySelector('svg') || null;
+                const btnHasIcon = !!btnSvg;
+                const btnIconSvg = btnSvg ? btnSvg.outerHTML : '';
+                let btnIconPos: 'left' | 'right' = 'left';
+                if (btnSvg && buttonEl && buttonEl.childNodes.length > 1) {
+                    const children = Array.from(buttonEl.childNodes);
+                    const sIdx = children.indexOf(btnSvg);
+                    const tIdx = children.findIndex(c => c !== btnSvg && (c.textContent || '').trim().length > 0);
+                    if (tIdx !== -1 && sIdx > tIdx) btnIconPos = 'right';
+                }
+
+                // Card Badge Icon detection
+                const badgeSvg = badgeEl?.querySelector('svg') || null;
+                const badgeHasIcon = !!badgeSvg;
+                const badgeIconSvg = badgeSvg ? badgeSvg.outerHTML : '';
+
                 const titleText = headingEl?.textContent?.trim() || '';
                 const label = titleText ? (titleText.length > 25 ? titleText.slice(0, 25) + '...' : titleText) : `Card #${index + 1}`;
                 const hasBadgeEl = !!(badgeEl && badgeEl !== headingEl && badgeEl !== buttonEl);
@@ -683,10 +799,16 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 return {
                     index,
                     label,
+                    hasIcon: hasCardIcon,
+                    iconSvg: cardIconSvg,
+                    iconColor: cardIconColor,
+                    iconBg: cardIconBg,
                     hasBadge: hasBadgeEl,
                     badge: badgeText,
                     badgeColor: badgeEl?.style.color || '',
                     badgeBg: badgeEl?.style.backgroundColor || '',
+                    badgeHasIcon,
+                    badgeIconSvg,
                     title: titleText,
                     titleTag: headingEl?.tagName.toLowerCase() || 'h3',
                     titleColor: headingEl?.style.color || '',
@@ -698,6 +820,9 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                     buttonBg: (buttonEl as HTMLElement)?.style.backgroundColor || '',
                     buttonColor: (buttonEl as HTMLElement)?.style.color || '',
                     isButton: isBtn,
+                    buttonHasIcon: btnHasIcon,
+                    buttonIconSvg: btnIconSvg,
+                    buttonIconPosition: btnIconPos,
                     imageSrc: imgEl ? (imgEl.getAttribute('src') || imgEl.src || '') : '',
                     imageAlt: imgEl?.getAttribute('alt') || '',
                     backgroundColor: el.style.backgroundColor || '',
@@ -718,24 +843,33 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
 
             // 3. Standalone Paragraphs & Text Elements: p, span, div, label (outside cards)
             const pEls = getStandaloneTextElements(sectionEl as HTMLElement, cardCandidateEls);
-            const paragraphs: EditableParagraph[] = pEls.map((el, index) => ({
-                index,
-                tag: el.tagName.toLowerCase(),
-                text: el.textContent?.trim() || '',
-                color: (el as HTMLElement).style.color || ''
-            }));
+            const paragraphs: EditableParagraph[] = pEls.map((el, index) => {
+                const pSvg = el.querySelector('svg') || (el.parentElement?.classList.contains('rounded-full') ? el.parentElement.querySelector('svg') : null);
+                return {
+                    index,
+                    tag: el.tagName.toLowerCase(),
+                    text: el.textContent?.trim() || '',
+                    color: (el as HTMLElement).style.color || '',
+                    hasIcon: !!pSvg,
+                    iconSvg: pSvg ? pSvg.outerHTML : ''
+                };
+            });
 
-            // 4. Standalone Links & Buttons: a, button (outside cards)
-            const linkEls = Array.from(sectionEl.querySelectorAll('a, button'))
-                .filter(el => !cardCandidateEls.some(card => card.contains(el)))
-                .filter(el => {
-                    const text = el.textContent?.trim() || '';
-                    const href = el.getAttribute('href');
-                    return text.length > 0 || !!href;
-                });
+            // 4. Standalone Links & Buttons: a, button, [role="button"] (outside cards)
+            const linkEls = getStandaloneLinks(sectionEl as HTMLElement, cardCandidateEls);
             const links: EditableLink[] = linkEls.map((el, index) => {
                 const htmlEl = el as HTMLElement;
                 const isBtn = el.tagName.toLowerCase() === 'button' || /rounded|bg-|btn|px-|py-/.test(el.className);
+                const linkSvg = el.querySelector('svg');
+                const linkHasIcon = !!linkSvg;
+                const linkIconSvg = linkSvg ? linkSvg.outerHTML : '';
+                let linkIconPos: 'left' | 'right' = 'left';
+                if (linkSvg && el.childNodes.length > 1) {
+                    const children = Array.from(el.childNodes);
+                    const sIdx = children.indexOf(linkSvg);
+                    const tIdx = children.findIndex(c => c !== linkSvg && (c.textContent || '').trim().length > 0);
+                    if (tIdx !== -1 && sIdx > tIdx) linkIconPos = 'right';
+                }
                 return {
                     index,
                     tag: el.tagName.toLowerCase(),
@@ -745,7 +879,10 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                     backgroundColor: htmlEl.style.backgroundColor || '',
                     color: htmlEl.style.color || '',
                     borderColor: htmlEl.style.borderColor || '',
-                    isButton: isBtn
+                    isButton: isBtn,
+                    hasIcon: linkHasIcon,
+                    iconSvg: linkIconSvg,
+                    iconPosition: linkIconPos
                 };
             });
 
@@ -801,8 +938,14 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             const paragraphs = getStandaloneTextElements(sectionEl as HTMLElement, cards);
             targetEl = (paragraphs[index] as HTMLElement) || null;
         } else if (type === 'link') {
-            const links = Array.from(sectionEl.querySelectorAll('a, button, [role="button"]')).filter(el => !cards.some(c => c.contains(el)));
-            targetEl = (links[index] as HTMLElement) || null;
+            const links = getStandaloneLinks(sectionEl as HTMLElement, cards);
+            targetEl = links[index] || null;
+            if (subField === 'icon' && targetEl) {
+                const iconEl = targetEl.querySelector('svg') as HTMLElement | null;
+                if (iconEl) {
+                    iconEl.classList.add('__ss-active-element');
+                }
+            }
         } else if (type === 'image') {
             const imgs = Array.from(sectionEl.querySelectorAll('img')).filter(el => !cards.some(c => c.contains(el)));
             targetEl = (imgs[index] as HTMLElement) || null;
@@ -827,36 +970,92 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 } else if (subField === 'image') {
                     const im = cardEl.querySelector('img') as HTMLElement | null;
                     if (im) im.classList.add('__ss-active-element');
+                } else if (subField === 'icon') {
+                    const btn = cardEl.querySelector('a, button, [role="button"]');
+                    const badge = cardEl.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+                    const ic = Array.from(cardEl.querySelectorAll('svg')).find(s => {
+                        if (btn && btn.contains(s)) return false;
+                        if (badge && badge.contains(s)) return false;
+                        return true;
+                    });
+                    if (ic) {
+                        const host = (ic.parentElement && ic.parentElement !== cardEl && ic.parentElement.children.length === 1 ? ic.parentElement : ic) as HTMLElement;
+                        host.classList.add('__ss-active-element');
+                    }
                 }
             }
         } else if (type === 'section') {
             targetEl = sectionEl as HTMLElement;
         }
 
-        const existingBadge = doc.getElementById('__ss-selection-label-badge__');
-        if (existingBadge) existingBadge.remove();
+        // Remove old selection overlays
+        doc.getElementById('__ss-selection-overlay__')?.remove();
+        doc.getElementById('__ss-selection-label-badge__')?.remove();
 
         if (targetEl) {
             if (type !== 'card' && type !== 'section') {
                 targetEl.classList.add('__ss-active-element');
             }
-            const labelText = type === 'card' 
-                ? (subField && subField !== 'card' ? subField.charAt(0).toUpperCase() + subField.slice(1) : `Card #${index + 1}`) 
-                : (type === 'heading' ? (targetEl.tagName.toUpperCase()) : type === 'section' ? (sectionEl.getAttribute('data-section-id') || sectionEl.id || 'Section').toUpperCase() + ' Section' : type === 'paragraph' ? (targetEl.tagName.toLowerCase() === 'p' ? 'Paragraph' : targetEl.tagName.toLowerCase() === 'span' ? 'Label' : 'Text') : type.charAt(0).toUpperCase() + type.slice(1));
-            
-            const badge = doc.createElement('div');
-            badge.className = '__ss-selection-label';
-            badge.id = '__ss-selection-label-badge__';
-            badge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#a78bfa;"></span> ${labelText}`;
-            
-            const activeChild = targetEl.querySelector('.__ss-active-element') as HTMLElement | null;
-            const badgeHost = activeChild || targetEl;
-            badgeHost.style.position = badgeHost.style.position || 'relative';
-            badgeHost.appendChild(badge);
+            const labelText = type === 'card'
+                ? (subField && subField !== 'card' ? subField.charAt(0).toUpperCase() + subField.slice(1) : `Card #${index + 1}`)
+                : (type === 'heading' ? targetEl.tagName.toUpperCase()
+                    : type === 'section' ? (sectionEl.getAttribute('data-section-id') || sectionEl.id || 'Section').toUpperCase() + ' Section'
+                    : type === 'paragraph' ? (targetEl.tagName.toLowerCase() === 'p' ? 'Paragraph' : targetEl.tagName.toLowerCase() === 'span' ? 'Label' : 'Text')
+                    : type.charAt(0).toUpperCase() + type.slice(1));
 
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Find the actual highlighted sub-element for the overlay position
+            const activeChild = (type === 'card' && subField && subField !== 'card')
+                ? (targetEl.querySelector('.__ss-active-element') as HTMLElement | null)
+                : null;
+            const overlayHost = activeChild || targetEl;
+
+            // Smoothly scroll the highlighted element into center view
+            overlayHost.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            const updateOverlayPos = () => {
+                if (!overlayHost || !doc.body.contains(overlayHost)) return;
+                const win = doc.defaultView || iframe.contentWindow;
+                const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+                const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+                const rect = overlayHost.getBoundingClientRect();
+                if (rect.width === 0 && rect.height === 0) return;
+
+                let overlay = doc.getElementById('__ss-selection-overlay__');
+                if (!overlay) {
+                    overlay = doc.createElement('div');
+                    overlay.id = '__ss-selection-overlay__';
+                    overlay.className = '__ss-selection-overlay';
+                    doc.body.appendChild(overlay);
+                }
+                overlay.style.left = `${rect.left + sx - 3}px`;
+                overlay.style.top = `${rect.top + sy - 3}px`;
+                overlay.style.width = `${rect.width + 6}px`;
+                overlay.style.height = `${rect.height + 6}px`;
+
+                let labelEl = doc.getElementById('__ss-selection-label-badge__');
+                if (!labelEl) {
+                    labelEl = doc.createElement('div');
+                    labelEl.id = '__ss-selection-label-badge__';
+                    labelEl.className = '__ss-selection-label';
+                    doc.body.appendChild(labelEl);
+                }
+                labelEl.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#c4b5fd;box-shadow:0 0 6px #ddd6fe;"></span> Editing: ${labelText}`;
+                labelEl.style.left = `${Math.max(4, rect.left + sx - 3)}px`;
+                const topPos = rect.top + sy - 28;
+                labelEl.style.top = `${topPos < 0 ? rect.bottom + sy + 4 : topPos}px`;
+            };
+
+            updateOverlayPos();
+            setTimeout(updateOverlayPos, 150);
+            setTimeout(updateOverlayPos, 350);
         }
     }, [selectedSectionId]);
+
+    // Sidebar-first selection: highlights element in iframe AND updates sidebar state
+    const handleSidebarSelect = useCallback((type: 'heading' | 'paragraph' | 'link' | 'image' | 'card' | 'section', index: number, subField?: string) => {
+        highlightElementInIframe(type, index, subField);
+        setHighlightedTarget({ type, index, subField: subField as any, timestamp: Date.now() });
+    }, [highlightElementInIframe]);
 
     // Setup iframe: clean preview, interactive element detection, click-to-highlight right sidebar settings
     const setupIframeInteraction = useCallback(() => {
@@ -874,73 +1073,119 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             style.textContent = `
                 /* Section boundary */
                 .__ss-active-section {
-                    outline: 2px dashed rgba(59, 130, 246, 0.35) !important;
-                    outline-offset: 4px !important;
-                    transition: outline 0.2s ease !important;
+                    outline: 2.5px dashed #3b82f6 !important;
+                    outline-offset: -2px !important;
+                    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2), inset 0 0 0 2px rgba(59, 130, 246, 0.12) !important;
+                    position: relative !important;
+                    transition: outline 0.2s ease, box-shadow 0.2s ease !important;
+                }
+                /* Section label badge */
+                .__ss-section-badge {
+                    position: absolute !important;
+                    background: #2563eb !important;
+                    color: #ffffff !important;
+                    font-size: 11px !important;
+                    font-weight: 700 !important;
+                    letter-spacing: 0.04em !important;
+                    padding: 4px 10px !important;
+                    border-radius: 6px !important;
+                    z-index: 2147483645 !important;
+                    pointer-events: none !important;
+                    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+                    white-space: nowrap !important;
                 }
                 /* Selected card container */
                 .__ss-active-card {
-                    outline: 2px solid #3b82f6 !important;
+                    outline: 2.5px solid #3b82f6 !important;
                     outline-offset: 2px !important;
-                    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15) !important;
+                    box-shadow: 0 0 0 5px rgba(59, 130, 246, 0.25), 0 0 20px rgba(59, 130, 246, 0.2) !important;
                     position: relative;
                     z-index: 15 !important;
                     transition: all 0.2s ease !important;
                 }
                 /* Selected individual element */
                 .__ss-active-element {
-                    outline: 2px solid #8b5cf6 !important;
+                    outline: 2.5px solid #8b5cf6 !important;
                     outline-offset: 2px !important;
-                    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.2) !important;
-                    position: relative;
-                    z-index: 20 !important;
+                    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 16px rgba(139, 92, 246, 0.35) !important;
                     transition: all 0.2s ease !important;
+                    animation: __ss-pulse 1.5s ease-in-out 1 !important;
+                }
+                @keyframes __ss-pulse {
+                    0% { box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3); }
+                    50% { box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.45); }
+                    100% { box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3); }
                 }
                 /* Hover preview outline (before clicking) */
                 .__ss-hover-element {
-                    outline: 1.5px dashed rgba(59, 130, 246, 0.5) !important;
+                    outline: 1.5px dashed rgba(59, 130, 246, 0.6) !important;
                     outline-offset: 2px !important;
                     cursor: pointer !important;
                     transition: outline 0.1s ease !important;
                 }
+                /* Absolute overlay highlight for selected element (tracks document coordinates) */
+                .__ss-selection-overlay {
+                    position: absolute !important;
+                    pointer-events: none !important;
+                    border: 2.5px solid #8b5cf6 !important;
+                    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 20px rgba(139, 92, 246, 0.4) !important;
+                    border-radius: 4px !important;
+                    z-index: 2147483646 !important;
+                    transition: left 0.1s ease, top 0.1s ease, width 0.1s ease, height 0.1s ease !important;
+                    animation: __ss-selection-pulse 1.8s ease-in-out infinite !important;
+                }
+                @keyframes __ss-selection-pulse {
+                    0%, 100% { box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3), 0 0 16px rgba(139, 92, 246, 0.3); }
+                    50% { box-shadow: 0 0 0 7px rgba(139, 92, 246, 0.45), 0 0 24px rgba(139, 92, 246, 0.6); }
+                }
+                /* Absolute overlay for hover highlight */
+                .__ss-hover-overlay {
+                    position: absolute !important;
+                    pointer-events: none !important;
+                    border: 1.5px dashed rgba(59, 130, 246, 0.75) !important;
+                    border-radius: 3px !important;
+                    z-index: 2147483645 !important;
+                    transition: all 0.08s ease !important;
+                }
+                /* Label badge attached to selection overlay */
+                .__ss-selection-label {
+                    position: absolute !important;
+                    background: #7c3aed !important;
+                    color: #ffffff !important;
+                    font-size: 11px !important;
+                    font-weight: 700 !important;
+                    padding: 3px 10px !important;
+                    border-radius: 5px !important;
+                    z-index: 2147483647 !important;
+                    pointer-events: none !important;
+                    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                    line-height: 1.4 !important;
+                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35) !important;
+                    white-space: nowrap !important;
+                    letter-spacing: 0.02em !important;
+                }
                 /* Hover label badge */
                 .__ss-hover-label {
-                    position: absolute;
-                    top: -22px;
-                    left: 0;
-                    background: #3b82f6;
-                    color: white;
-                    font-size: 10px;
-                    font-weight: 600;
-                    padding: 1px 6px;
-                    border-radius: 3px;
-                    z-index: 9999;
-                    pointer-events: none;
-                    font-family: ui-monospace, SFMono-Regular, monospace;
-                    white-space: nowrap;
-                    line-height: 1.6;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-                }
-                /* Selection label on active element */
-                .__ss-selection-label {
-                    position: absolute;
-                    top: -24px;
-                    left: -2px;
-                    background: #8b5cf6;
-                    color: white;
-                    font-size: 10px;
-                    font-weight: 600;
-                    padding: 2px 8px;
-                    border-radius: 4px;
-                    z-index: 9999;
-                    pointer-events: none;
-                    font-family: ui-monospace, SFMono-Regular, monospace;
-                    display: flex;
-                    align-items: center;
-                    gap: 4px;
-                    line-height: 1.4;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                    white-space: nowrap;
+                    position: absolute !important;
+                    background: #3b82f6 !important;
+                    color: white !important;
+                    font-size: 10px !important;
+                    font-weight: 600 !important;
+                    padding: 2px 7px !important;
+                    border-radius: 4px !important;
+                    z-index: 2147483647 !important;
+                    pointer-events: none !important;
+                    font-family: ui-monospace, SFMono-Regular, monospace !important;
+                    white-space: nowrap !important;
+                    line-height: 1.4 !important;
+                    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25) !important;
                 }
                 /* Inline editing active on canvas */
                 .__ss-inline-editing {
@@ -951,6 +1196,34 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 }
                 h1, h2, h3, h4, h5, h6, p, a, button, img, [class*="rounded-2xl"], [class*="rounded-3xl"], [class*="rounded-xl"], [class*="rounded-lg"], .card, [data-card], [data-bento-card], section div, header div, footer div, nav div, main div, article {
                     cursor: pointer !important;
+                }
+                /* Always ensure elements with scroll reveal / AOS remain 100% visible in the editor canvas */
+                [data-aos] {
+                    opacity: 1 !important;
+                    transform: none !important;
+                    transition: none !important;
+                    visibility: visible !important;
+                }
+                [data-aos].aos-animate {
+                    opacity: 1 !important;
+                    transform: none !important;
+                }
+                /* Responsive guard rules for all device preview modes */
+                html, body {
+                    max-width: 100% !important;
+                    overflow-x: hidden !important;
+                    -webkit-text-size-adjust: 100%;
+                }
+                img, svg, video, canvas, iframe {
+                    max-width: 100% !important;
+                }
+                @media (max-width: 768px) {
+                    h1, h2, h3, h4, p, a, button {
+                        overflow-wrap: break-word !important;
+                    }
+                    [data-bento-grid] {
+                        grid-template-columns: minmax(0, 1fr) !important;
+                    }
                 }
             `;
             if (doc.head) {
@@ -971,7 +1244,6 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             if (tag === 'BUTTON' || el.getAttribute('role') === 'button') return 'Button';
             if (tag === 'A') return 'Link';
             if (['SECTION', 'HEADER', 'FOOTER', 'NAV', 'MAIN'].includes(tag)) return 'Section';
-            // Check if it's a card candidate
             const classList = el.className || '';
             if (el.hasAttribute('data-card') || el.hasAttribute('data-bento-card') ||
                 classList.includes('card') ||
@@ -983,37 +1255,69 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             return tag === 'DIV' ? 'Container' : tag;
         };
 
-        // Helper: inject or remove a hover label badge
+        // Overlay-based helpers: fixed-position overlay elements sit on top of the content
+        // This avoids clipping by overflow:hidden, inline display, or z-index stacking.
+
+        const removeOverlay = (id: string) => {
+            doc.getElementById(id)?.remove();
+        };
+
+        const showOverlay = (el: HTMLElement, id: string, cssClass: string) => {
+            removeOverlay(id);
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) return;
+            const win = doc.defaultView || iframe.contentWindow;
+            const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+            const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+            const overlay = doc.createElement('div');
+            overlay.id = id;
+            overlay.className = cssClass;
+            overlay.style.left = `${rect.left + sx - 2}px`;
+            overlay.style.top = `${rect.top + sy - 2}px`;
+            overlay.style.width = `${rect.width + 4}px`;
+            overlay.style.height = `${rect.height + 4}px`;
+            doc.body.appendChild(overlay);
+        };
+
+        const showLabelOverlay = (el: HTMLElement, labelId: string, labelClass: string, text: string, dotColor: string = '#a78bfa') => {
+            removeOverlay(labelId);
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) return;
+            const win = doc.defaultView || iframe.contentWindow;
+            const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+            const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+            const label = doc.createElement('div');
+            label.id = labelId;
+            label.className = labelClass;
+            label.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dotColor};"></span> ${text}`;
+            const topPos = rect.top + sy - 26;
+            label.style.top = `${topPos < 0 ? rect.bottom + sy + 4 : topPos}px`;
+            label.style.left = `${Math.max(4, rect.left + sx - 2)}px`;
+            doc.body.appendChild(label);
+        };
+
+        // Helper: show hover overlay + label
         const showHoverLabel = (el: HTMLElement) => {
-            removeHoverLabel();
             const label = getElementTypeLabel(el);
-            const badge = doc.createElement('div');
-            badge.className = '__ss-hover-label';
-            badge.id = '__ss-hover-label-badge__';
-            badge.textContent = label;
-            el.style.position = el.style.position || 'relative';
-            el.appendChild(badge);
+            showOverlay(el, '__ss-hover-overlay__', '__ss-hover-overlay');
+            showLabelOverlay(el, '__ss-hover-label-badge__', '__ss-hover-label', label, '#60a5fa');
         };
 
         const removeHoverLabel = () => {
-            const existing = doc.getElementById('__ss-hover-label-badge__');
-            if (existing) existing.remove();
+            removeOverlay('__ss-hover-overlay__');
+            removeOverlay('__ss-hover-label-badge__');
         };
 
-        // Helper: inject selection label on active element
+        // Helper: inject selection overlay + label on active element
         const showSelectionLabel = (el: HTMLElement, label: string) => {
             removeSelectionLabel();
-            const badge = doc.createElement('div');
-            badge.className = '__ss-selection-label';
-            badge.id = '__ss-selection-label-badge__';
-            badge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#a78bfa;"></span> ${label}`;
-            el.style.position = el.style.position || 'relative';
-            el.appendChild(badge);
+            showOverlay(el, '__ss-selection-overlay__', '__ss-selection-overlay');
+            showLabelOverlay(el, '__ss-selection-label-badge__', '__ss-selection-label', label, '#a78bfa');
         };
 
         const removeSelectionLabel = () => {
-            const existing = doc.getElementById('__ss-selection-label-badge__');
-            if (existing) existing.remove();
+            removeOverlay('__ss-selection-overlay__');
+            removeOverlay('__ss-selection-label-badge__');
         };
 
         // Hover handler: show dashed outline + type label on mouseover
@@ -1025,8 +1329,11 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             // Don't show hover if element is already selected
             if (target.classList.contains('__ss-active-element') || target.classList.contains('__ss-active-card')) return;
 
-            // Don't hover on badges themselves
-            if (target.classList.contains('__ss-hover-label') || target.classList.contains('__ss-selection-label')) return;
+            // Don't hover on overlay badges themselves
+            if (target.id === '__ss-hover-overlay__' || target.id === '__ss-hover-label-badge__' ||
+                target.id === '__ss-selection-overlay__' || target.id === '__ss-selection-label-badge__') return;
+            if (target.classList.contains('__ss-hover-label') || target.classList.contains('__ss-selection-label') ||
+                target.classList.contains('__ss-hover-overlay') || target.classList.contains('__ss-selection-overlay')) return;
 
             // Find the closest meaningful element
             const meaningful = target.closest('h1, h2, h3, h4, h5, h6, p, a, button, [role="button"], img, [data-card], [data-bento-card], .card, [class*="card"], [class*="rounded-xl"], [class*="rounded-2xl"], [class*="rounded-3xl"], [class*="rounded-lg"], [class*="border"], [class*="bg-"]') as HTMLElement | null;
@@ -1129,7 +1436,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 const cardIndex = Math.max(0, cards.indexOf(clickedCard));
                 clickedCard.classList.add('__ss-active-card');
 
-                let subField: 'title' | 'description' | 'button' | 'image' | 'badge' | 'card' = 'card';
+                let subField: 'title' | 'description' | 'button' | 'image' | 'badge' | 'card' | 'icon' = 'card';
 
                 const badgeInCard = (target.closest('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') ||
                     (clickedCard === target ? clickedCard.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') : null)) as HTMLElement | null;
@@ -1140,6 +1447,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 const btnInCard = (target.closest('a, button, [role="button"]') ||
                     (clickedCard === target ? clickedCard.querySelector('a, button, [role="button"]') : null)) as HTMLElement | null;
                 const imgInCard = (target.tagName === 'IMG' ? target : (target.querySelector('img') || target.closest('img') || (clickedCard === target ? clickedCard.querySelector('img') : null))) as HTMLElement | null;
+                const svgInCard = (target.closest('svg') || (target.tagName === 'DIV' && target.children.length === 1 && target.querySelector('svg') ? target.querySelector('svg') : null)) as SVGElement | null;
 
                 if (badgeInCard && clickedCard.contains(badgeInCard) && (target === badgeInCard || badgeInCard.contains(target))) {
                     subField = 'badge';
@@ -1149,6 +1457,11 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                     subField = 'button';
                     btnInCard.classList.add('__ss-active-element');
                     showSelectionLabel(btnInCard, 'Button');
+                } else if (svgInCard && clickedCard.contains(svgInCard) && !btnInCard?.contains(svgInCard) && !badgeInCard?.contains(svgInCard)) {
+                    subField = 'icon';
+                    const iconHost = (svgInCard.parentElement && svgInCard.parentElement !== clickedCard && svgInCard.parentElement.children.length === 1 ? svgInCard.parentElement : svgInCard) as HTMLElement;
+                    iconHost.classList.add('__ss-active-element');
+                    showSelectionLabel(iconHost, 'Card Icon');
                 } else if (imgInCard && clickedCard.contains(imgInCard) && (target === imgInCard || imgInCard.contains(target))) {
                     subField = 'image';
                     imgInCard.classList.add('__ss-active-element');
@@ -1186,12 +1499,21 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             // 3. Standalone Button or Link (ancestor or descendant)
             const linkEl = (target.closest('a, button, [role="button"]') || (target.tagName === 'DIV' ? target.querySelector('a, button, [role="button"]') : null)) as HTMLElement | null;
             if (linkEl && sectionEl.contains(linkEl)) {
-                const standaloneLinks = Array.from(sectionEl.querySelectorAll('a, button, [role="button"]')).filter(el => !cards.some(c => c.contains(el)));
+                const standaloneLinks = getStandaloneLinks(sectionEl, cards);
                 const index = standaloneLinks.indexOf(linkEl);
                 if (index !== -1) {
                     linkEl.classList.add('__ss-active-element');
-                    showSelectionLabel(linkEl, linkEl.tagName === 'BUTTON' ? 'Button' : 'Link');
-                    setHighlightedTarget({ type: 'link', index, timestamp: Date.now() });
+                    const isIconClick = !!(target.closest('svg') || target.tagName.toLowerCase() === 'path');
+                    const subField = isIconClick ? 'icon' : 'button';
+                    const iconEl = linkEl.querySelector('svg');
+                    if (isIconClick && iconEl) {
+                        iconEl.classList.add('__ss-active-element');
+                    }
+                    const label = isIconClick
+                        ? (linkEl.tagName === 'BUTTON' ? 'Button Icon' : 'Link Icon')
+                        : (linkEl.tagName === 'BUTTON' ? 'Button' : 'Link');
+                    showSelectionLabel(isIconClick && iconEl ? iconEl as HTMLElement : linkEl, label);
+                    setHighlightedTarget({ type: 'link', index, subField, timestamp: Date.now() });
                     return;
                 }
             }
@@ -1272,6 +1594,8 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                     cleanDoc.getElementById('__studiosync_preview_styles__')?.remove();
                     cleanDoc.getElementById('__ss-selection-label-badge__')?.remove();
                     cleanDoc.getElementById('__ss-hover-label-badge__')?.remove();
+                    cleanDoc.getElementById('__ss-selection-overlay__')?.remove();
+                    cleanDoc.getElementById('__ss-hover-overlay__')?.remove();
                     pushHistory(cleanDoc.documentElement.outerHTML);
                 }
             };
@@ -1312,13 +1636,47 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         doc.addEventListener('mouseover', handleMouseOver, true);
         doc.addEventListener('mouseout', handleMouseOut, true);
 
+        // On scroll, update overlay positions so they stay precisely synced
+        const handleScroll = () => {
+            const selOverlay = doc.getElementById('__ss-selection-overlay__');
+            const selLabel = doc.getElementById('__ss-selection-label-badge__');
+            const activeEl = (doc.querySelector('.__ss-active-card .__ss-active-element') || doc.querySelector('.__ss-active-element, .__ss-active-card')) as HTMLElement | null;
+            if (selOverlay && activeEl) {
+                const win = doc.defaultView || iframe.contentWindow;
+                const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+                const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+                const rect = activeEl.getBoundingClientRect();
+                selOverlay.style.left = `${rect.left + sx - 3}px`;
+                selOverlay.style.top = `${rect.top + sy - 3}px`;
+                selOverlay.style.width = `${rect.width + 6}px`;
+                selOverlay.style.height = `${rect.height + 6}px`;
+                if (selLabel) {
+                    selLabel.style.left = `${Math.max(4, rect.left + sx - 3)}px`;
+                    const topPos = rect.top + sy - 28;
+                    selLabel.style.top = `${topPos < 0 ? rect.bottom + sy + 4 : topPos}px`;
+                }
+            }
+            // Remove hover overlays on scroll
+            removeHoverLabel();
+            doc.querySelectorAll('.__ss-hover-element').forEach(el => el.classList.remove('__ss-hover-element'));
+        };
+        const contentWin = doc.defaultView || iframe.contentWindow;
+        if (contentWin) {
+            contentWin.addEventListener('scroll', handleScroll, { passive: true });
+        }
+        doc.addEventListener('scroll', handleScroll, true);
+
         return () => {
+            if (contentWin) {
+                contentWin.removeEventListener('scroll', handleScroll);
+            }
             doc.removeEventListener('click', handleClick, true);
             doc.removeEventListener('dblclick', handleDblClick, true);
             doc.removeEventListener('auxclick', handleAuxClick, true);
             doc.removeEventListener('submit', handleSubmit, true);
             doc.removeEventListener('mouseover', handleMouseOver, true);
             doc.removeEventListener('mouseout', handleMouseOut, true);
+            doc.removeEventListener('scroll', handleScroll, true);
         };
     }, [layers, pushHistory]);
 
@@ -1338,6 +1696,14 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             const elementId = `editor-control-${highlightedTarget.type}-${highlightedTarget.index}`;
             const targetEl = document.getElementById(elementId);
             if (targetEl) {
+                // If user already focused an input inside this control (sidebar-first flow),
+                // skip auto-scroll and re-focus to avoid disrupting their editing
+                const activeEl = document.activeElement;
+                const isAlreadyFocusedInside = activeEl && targetEl.contains(activeEl) &&
+                    (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+                if (isAlreadyFocusedInside) return;
+
                 targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
                 // If a specific subField inside a card was clicked (e.g. title, description, button, image):
@@ -1377,11 +1743,37 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         const doc = iframe.contentDocument;
         doc.querySelectorAll('.__ss-active-section').forEach(el => el.classList.remove('__ss-active-section'));
         doc.querySelectorAll('.__ss-active-element').forEach(el => el.classList.remove('__ss-active-element'));
+        doc.querySelectorAll('.__ss-active-card').forEach(el => el.classList.remove('__ss-active-card'));
+        doc.getElementById('__ss-selection-overlay__')?.remove();
+        doc.getElementById('__ss-selection-label-badge__')?.remove();
+        doc.getElementById('__ss-section-badge__')?.remove();
 
         const el = doc.getElementById(sectionId) || doc.querySelector(`[data-section-id="${sectionId}"]`);
         if (el) {
             el.classList.add('__ss-active-section');
+            const layer = layers.find(l => l.id === sectionId);
+            const sectionLabel = layer ? layer.label : (el.getAttribute('data-section-id') || el.id || 'Section');
+
+            const badge = doc.createElement('div');
+            badge.id = '__ss-section-badge__';
+            badge.className = '__ss-section-badge';
+            badge.innerHTML = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#60a5fa;box-shadow:0 0 6px #93c5fd;"></span> Active Section: ${sectionLabel}`;
+
+            const updateSectionBadge = () => {
+                if (!el || !doc.body.contains(el)) return;
+                const win = doc.defaultView || iframe.contentWindow;
+                const sx = win ? (win.scrollX || win.pageXOffset || doc.documentElement.scrollLeft || 0) : 0;
+                const sy = win ? (win.scrollY || win.pageYOffset || doc.documentElement.scrollTop || 0) : 0;
+                const rect = el.getBoundingClientRect();
+                badge.style.left = `${Math.max(8, rect.left + sx + 12)}px`;
+                badge.style.top = `${rect.top + sy + 12}px`;
+            };
+
+            updateSectionBadge();
+            doc.body.appendChild(badge);
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(updateSectionBadge, 200);
+            setTimeout(updateSectionBadge, 500);
         }
     };
 
@@ -1389,6 +1781,10 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         setSelectedSectionId(sectionId);
         highlightSectionInIframe(sectionId);
         setHighlightedTarget(null);
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setIsLeftSidebarOpen(false);
+            setIsRightSidebarOpen(true);
+        }
     };
 
     // Update Heading Text via Right Sidebar
@@ -1540,19 +1936,14 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         if (!sectionEl) return;
 
         const cards = getCardCandidates(sectionEl);
-        const linkEls = Array.from(sectionEl.querySelectorAll('a, button')).filter(el => {
-            if (cards.some(c => c.contains(el))) return false;
-            const text = el.textContent?.trim() || '';
-            const href = el.getAttribute('href');
-            return text.length > 0 || !!href;
-        });
+        const linkEls = getStandaloneLinks(sectionEl, cards);
 
         if (linkEls[index]) {
             const el = linkEls[index] as HTMLElement;
             let hasChanged = false;
 
             if (fields.text !== undefined && (linkEls[index].textContent || '').trim() !== fields.text.trim()) {
-                linkEls[index].textContent = fields.text;
+                updateElementTextPreservingSvg(linkEls[index] as HTMLElement, fields.text);
                 hasChanged = true;
             }
             if (fields.href !== undefined && linkEls[index].getAttribute('href') !== fields.href) {
@@ -1630,15 +2021,10 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             if (iframeRef.current?.contentDocument) {
                 const liveSection = iframeRef.current.contentDocument.getElementById(selectedSectionId);
                 const liveCards = liveSection ? getCardCandidates(liveSection) : [];
-                const liveLinks = liveSection ? Array.from(liveSection.querySelectorAll('a, button')).filter(el => {
-                    if (liveCards.some(c => c.contains(el))) return false;
-                    const text = el.textContent?.trim() || '';
-                    const href = el.getAttribute('href');
-                    return text.length > 0 || !!href;
-                }) : [];
+                const liveLinks = liveSection ? getStandaloneLinks(liveSection, liveCards) : [];
                 if (liveLinks[index]) {
                     const liveEl = liveLinks[index] as HTMLElement;
-                    if (fields.text !== undefined) liveEl.textContent = fields.text;
+                    if (fields.text !== undefined) updateElementTextPreservingSvg(liveEl, fields.text);
                     if (fields.href !== undefined) liveEl.setAttribute('href', fields.href);
                     if (fields.target !== undefined) {
                         if (fields.target) liveEl.setAttribute('target', fields.target);
@@ -1794,6 +2180,444 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         toast.success(cardIndex === 'all' ? 'Updated all cards in section' : 'Card styling updated');
     };
 
+    // Apply Icon from IconPickerModal to target element
+    const handleApplyIcon = (svgString: string, meta: {
+        iconId: string;
+        iconName: string;
+        size: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+        color: string;
+        position?: 'left' | 'right';
+        containerStyle?: 'none' | 'badge-soft' | 'badge-outline' | 'circle';
+    }) => {
+        if (!selectedSectionId || !iconPickerTarget) return;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const sectionEl = doc.getElementById(selectedSectionId);
+        if (!sectionEl) return;
+        const cards = getCardCandidates(sectionEl);
+
+        let hasChanged = false;
+
+        // Case A: Card Icon
+        if (iconPickerTarget.type === 'card' && iconPickerTarget.cardIndex !== undefined) {
+            const cardEl = cards[iconPickerTarget.cardIndex];
+            if (cardEl) {
+                const buttonEl = cardEl.querySelector('a, button, [role="button"]');
+                const badgeEl = cardEl.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+                const existingSvgs = Array.from(cardEl.querySelectorAll('svg')).filter(s => {
+                    if (buttonEl && buttonEl.contains(s)) return false;
+                    if (badgeEl && badgeEl.contains(s)) return false;
+                    return true;
+                });
+
+                const tempDiv = doc.createElement('div');
+                tempDiv.innerHTML = svgString.trim();
+                const newSvg = tempDiv.querySelector('svg');
+
+                if (newSvg) {
+                    if (existingSvgs.length > 0) {
+                        existingSvgs[0].replaceWith(newSvg);
+                        hasChanged = true;
+                    } else {
+                        const iconWrap = doc.createElement('div');
+                        if (meta.containerStyle === 'badge-soft') {
+                            iconWrap.className = 'w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-4 shrink-0';
+                        } else if (meta.containerStyle === 'circle') {
+                            iconWrap.className = 'w-12 h-12 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center text-primary mb-4 shrink-0 shadow-sm';
+                        } else {
+                            iconWrap.className = 'inline-flex items-center justify-center mb-3 text-primary shrink-0';
+                        }
+                        iconWrap.appendChild(newSvg);
+
+                        const heading = cardEl.querySelector('h1, h2, h3, h4, h5, h6');
+                        if (heading) {
+                            cardEl.insertBefore(iconWrap, heading);
+                        } else {
+                            cardEl.prepend(iconWrap);
+                        }
+                        hasChanged = true;
+                    }
+                }
+            }
+        }
+
+        // Case B: Button / Link Icon
+        else if (iconPickerTarget.type === 'link' || iconPickerTarget.type === 'card-button') {
+            let targetBtn: HTMLElement | null = null;
+            if (iconPickerTarget.type === 'link' && iconPickerTarget.linkIndex !== undefined) {
+                const linkEls = getStandaloneLinks(sectionEl, cards);
+                targetBtn = linkEls[iconPickerTarget.linkIndex] || null;
+            } else if (iconPickerTarget.type === 'card-button' && iconPickerTarget.cardIndex !== undefined) {
+                const cardEl = cards[iconPickerTarget.cardIndex];
+                targetBtn = cardEl ? cardEl.querySelector('a, button, [role="button"]') as HTMLElement : null;
+            }
+
+            if (targetBtn) {
+                const tempDiv = doc.createElement('div');
+                tempDiv.innerHTML = svgString.trim();
+                const newSvg = tempDiv.querySelector('svg');
+
+                if (newSvg) {
+                    if (!targetBtn.className.includes('inline-flex') && !targetBtn.className.includes('flex')) {
+                        targetBtn.className = targetBtn.className + ' inline-flex items-center justify-center gap-2';
+                    } else if (!targetBtn.className.includes('gap-')) {
+                        targetBtn.className = targetBtn.className + ' gap-2';
+                    }
+
+                    const existingSvg = targetBtn.querySelector('svg');
+                    if (existingSvg) existingSvg.remove();
+
+                    if (meta.position === 'right') {
+                        targetBtn.appendChild(newSvg);
+                    } else {
+                        targetBtn.prepend(newSvg);
+                    }
+                    hasChanged = true;
+                }
+            }
+        }
+
+        // Case C: Card Badge Icon
+        else if (iconPickerTarget.type === 'card-badge' && iconPickerTarget.cardIndex !== undefined) {
+            const cardEl = cards[iconPickerTarget.cardIndex];
+            const badgeEl = cardEl ? cardEl.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') as HTMLElement : null;
+            if (badgeEl) {
+                const tempDiv = doc.createElement('div');
+                tempDiv.innerHTML = svgString.trim();
+                const newSvg = tempDiv.querySelector('svg');
+                if (newSvg) {
+                    if (!badgeEl.className.includes('inline-flex') && !badgeEl.className.includes('flex')) {
+                        badgeEl.className = badgeEl.className + ' inline-flex items-center gap-1.5';
+                    } else if (!badgeEl.className.includes('gap-')) {
+                        badgeEl.className = badgeEl.className + ' gap-1.5';
+                    }
+                    const existingSvg = badgeEl.querySelector('svg');
+                    if (existingSvg) existingSvg.remove();
+                    if (meta.position === 'right') {
+                        badgeEl.appendChild(newSvg);
+                    } else {
+                        badgeEl.prepend(newSvg);
+                    }
+                    hasChanged = true;
+                }
+            }
+        }
+
+        // Case D: Standalone Paragraph / Kicker
+        else if (iconPickerTarget.type === 'paragraph' && iconPickerTarget.paragraphIndex !== undefined) {
+            const pEls = getStandaloneTextElements(sectionEl, cards);
+            const targetP = pEls[iconPickerTarget.paragraphIndex];
+            if (targetP) {
+                const tempDiv = doc.createElement('div');
+                tempDiv.innerHTML = svgString.trim();
+                const newSvg = tempDiv.querySelector('svg');
+                if (newSvg) {
+                    const parentKicker = targetP.parentElement && targetP.parentElement.classList.contains('rounded-full') ? targetP.parentElement : targetP;
+                    if (!parentKicker.className.includes('inline-flex') && !parentKicker.className.includes('flex')) {
+                        parentKicker.className = parentKicker.className + ' inline-flex items-center gap-2';
+                    }
+                    const existingSvg = parentKicker.querySelector('svg');
+                    if (existingSvg) existingSvg.remove();
+                    if (meta.position === 'right') {
+                        parentKicker.appendChild(newSvg);
+                    } else {
+                        parentKicker.prepend(newSvg);
+                    }
+                    hasChanged = true;
+                }
+            }
+        }
+
+        if (!hasChanged) return;
+        const updatedHtml = doc.documentElement.outerHTML;
+        pushHistory(updatedHtml);
+
+        // Surgical live DOM update (does NOT wipe section innerHTML, preserving AOS state & animations)
+        if (iframeRef.current?.contentDocument) {
+            const liveDoc = iframeRef.current.contentDocument;
+            const liveSection = liveDoc.getElementById(selectedSectionId);
+            if (liveSection) {
+                const liveCards = getCardCandidates(liveSection);
+                let surgicalSuccess = false;
+
+                const createLiveSvg = (): SVGElement | null => {
+                    const temp = liveDoc.createElement('div');
+                    temp.innerHTML = svgString.trim();
+                    return temp.querySelector('svg');
+                };
+
+                if (iconPickerTarget.type === 'link' && iconPickerTarget.linkIndex !== undefined) {
+                    const liveLinks = getStandaloneLinks(liveSection, liveCards);
+                    const liveBtn = liveLinks[iconPickerTarget.linkIndex];
+                    const newSvg = createLiveSvg();
+                    if (liveBtn && newSvg) {
+                        if (!liveBtn.className.includes('inline-flex') && !liveBtn.className.includes('flex')) {
+                            liveBtn.className = liveBtn.className + ' inline-flex items-center justify-center gap-2';
+                        } else if (!liveBtn.className.includes('gap-')) {
+                            liveBtn.className = liveBtn.className + ' gap-2';
+                        }
+                        liveBtn.querySelector('svg')?.remove();
+                        if (meta.position === 'right') {
+                            liveBtn.appendChild(newSvg);
+                        } else {
+                            liveBtn.prepend(newSvg);
+                        }
+                        surgicalSuccess = true;
+                    }
+                } else if (iconPickerTarget.type === 'card-button' && iconPickerTarget.cardIndex !== undefined) {
+                    const liveCard = liveCards[iconPickerTarget.cardIndex];
+                    const liveBtn = liveCard ? liveCard.querySelector('a, button, [role="button"]') as HTMLElement : null;
+                    const newSvg = createLiveSvg();
+                    if (liveBtn && newSvg) {
+                        if (!liveBtn.className.includes('inline-flex') && !liveBtn.className.includes('flex')) {
+                            liveBtn.className = liveBtn.className + ' inline-flex items-center justify-center gap-2';
+                        } else if (!liveBtn.className.includes('gap-')) {
+                            liveBtn.className = liveBtn.className + ' gap-2';
+                        }
+                        liveBtn.querySelector('svg')?.remove();
+                        if (meta.position === 'right') {
+                            liveBtn.appendChild(newSvg);
+                        } else {
+                            liveBtn.prepend(newSvg);
+                        }
+                        surgicalSuccess = true;
+                    }
+                } else if (iconPickerTarget.type === 'card' && iconPickerTarget.cardIndex !== undefined) {
+                    const liveCard = liveCards[iconPickerTarget.cardIndex];
+                    const newSvg = createLiveSvg();
+                    if (liveCard && newSvg) {
+                        const liveBtn = liveCard.querySelector('a, button, [role="button"]');
+                        const liveBadge = liveCard.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+                        const liveExistingSvgs = Array.from(liveCard.querySelectorAll('svg')).filter(s => {
+                            if (liveBtn && liveBtn.contains(s)) return false;
+                            if (liveBadge && liveBadge.contains(s)) return false;
+                            return true;
+                        });
+                        if (liveExistingSvgs.length > 0) {
+                            liveExistingSvgs[0].replaceWith(newSvg);
+                            surgicalSuccess = true;
+                        } else {
+                            const iconWrap = liveDoc.createElement('div');
+                            if (meta.containerStyle === 'badge-soft') {
+                                iconWrap.className = 'w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-4 shrink-0';
+                            } else if (meta.containerStyle === 'circle') {
+                                iconWrap.className = 'w-12 h-12 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center text-primary mb-4 shrink-0 shadow-sm';
+                            } else {
+                                iconWrap.className = 'inline-flex items-center justify-center mb-3 text-primary shrink-0';
+                            }
+                            iconWrap.appendChild(newSvg);
+                            const heading = liveCard.querySelector('h1, h2, h3, h4, h5, h6');
+                            if (heading) {
+                                liveCard.insertBefore(iconWrap, heading);
+                            } else {
+                                liveCard.prepend(iconWrap);
+                            }
+                            surgicalSuccess = true;
+                        }
+                    }
+                } else if (iconPickerTarget.type === 'card-badge' && iconPickerTarget.cardIndex !== undefined) {
+                    const liveCard = liveCards[iconPickerTarget.cardIndex];
+                    const liveBadge = liveCard ? liveCard.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') as HTMLElement : null;
+                    const newSvg = createLiveSvg();
+                    if (liveBadge && newSvg) {
+                        if (!liveBadge.className.includes('inline-flex') && !liveBadge.className.includes('flex')) {
+                            liveBadge.className = liveBadge.className + ' inline-flex items-center gap-1.5';
+                        } else if (!liveBadge.className.includes('gap-')) {
+                            liveBadge.className = liveBadge.className + ' gap-1.5';
+                        }
+                        liveBadge.querySelector('svg')?.remove();
+                        if (meta.position === 'right') {
+                            liveBadge.appendChild(newSvg);
+                        } else {
+                            liveBadge.prepend(newSvg);
+                        }
+                        surgicalSuccess = true;
+                    }
+                } else if (iconPickerTarget.type === 'paragraph' && iconPickerTarget.paragraphIndex !== undefined) {
+                    const livePs = getStandaloneTextElements(liveSection, liveCards);
+                    const liveP = livePs[iconPickerTarget.paragraphIndex];
+                    const newSvg = createLiveSvg();
+                    if (liveP && newSvg) {
+                        const parentKicker = liveP.parentElement && liveP.parentElement.classList.contains('rounded-full') ? liveP.parentElement : liveP;
+                        if (!parentKicker.className.includes('inline-flex') && !parentKicker.className.includes('flex')) {
+                            parentKicker.className = parentKicker.className + ' inline-flex items-center gap-2';
+                        }
+                        parentKicker.querySelector('svg')?.remove();
+                        if (meta.position === 'right') {
+                            parentKicker.appendChild(newSvg);
+                        } else {
+                            parentKicker.prepend(newSvg);
+                        }
+                        surgicalSuccess = true;
+                    }
+                }
+
+                if (!surgicalDone) {
+                    const updatedSection = doc.getElementById(selectedSectionId);
+                    if (updatedSection) {
+                        liveSection.innerHTML = updatedSection.innerHTML;
+                        liveSection.querySelectorAll('[data-aos]').forEach(el => el.classList.add('aos-animate'));
+                    }
+                }
+
+                // Re-highlight targeted element in iframe
+                if (iconPickerTarget.type === 'link' && iconPickerTarget.linkIndex !== undefined) {
+                    highlightElementInIframe('link', iconPickerTarget.linkIndex, 'icon');
+                } else if (iconPickerTarget.type === 'card' && iconPickerTarget.cardIndex !== undefined) {
+                    highlightElementInIframe('card', iconPickerTarget.cardIndex, 'icon');
+                } else if (iconPickerTarget.type === 'card-button' && iconPickerTarget.cardIndex !== undefined) {
+                    highlightElementInIframe('card', iconPickerTarget.cardIndex, 'button');
+                } else if (iconPickerTarget.type === 'card-badge' && iconPickerTarget.cardIndex !== undefined) {
+                    highlightElementInIframe('card', iconPickerTarget.cardIndex, 'badge');
+                } else if (iconPickerTarget.type === 'paragraph' && iconPickerTarget.paragraphIndex !== undefined) {
+                    highlightElementInIframe('paragraph', iconPickerTarget.paragraphIndex);
+                }
+            }
+        }
+        toast.success('Icon updated');
+    };
+
+    // Remove Icon from target element
+    const handleRemoveIcon = (overrideTarget?: typeof iconPickerTarget) => {
+        const target = overrideTarget || iconPickerTarget;
+        if (!selectedSectionId || !target) return;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const sectionEl = doc.getElementById(selectedSectionId);
+        if (!sectionEl) return;
+        const cards = getCardCandidates(sectionEl);
+
+        let hasChanged = false;
+
+        if (target.type === 'card' && target.cardIndex !== undefined) {
+            const cardEl = cards[target.cardIndex];
+            if (cardEl) {
+                const buttonEl = cardEl.querySelector('a, button, [role="button"]');
+                const badgeEl = cardEl.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+                const existingSvgs = Array.from(cardEl.querySelectorAll('svg')).filter(s => {
+                    if (buttonEl && buttonEl.contains(s)) return false;
+                    if (badgeEl && badgeEl.contains(s)) return false;
+                    return true;
+                });
+                if (existingSvgs.length > 0) {
+                    const svgEl = existingSvgs[0];
+                    const parent = svgEl.parentElement;
+                    if (parent && parent !== cardEl && (parent.textContent || '').trim().length === 0 && parent.children.length === 1) {
+                        parent.remove();
+                    } else {
+                        svgEl.remove();
+                    }
+                    hasChanged = true;
+                }
+            }
+        } else if (target.type === 'link' && target.linkIndex !== undefined) {
+            const linkEls = getStandaloneLinks(sectionEl, cards);
+            const link = linkEls[target.linkIndex];
+            if (link) {
+                link.querySelector('svg')?.remove();
+                hasChanged = true;
+            }
+        } else if (target.type === 'card-button' && target.cardIndex !== undefined) {
+            const cardEl = cards[target.cardIndex];
+            const btn = cardEl?.querySelector('a, button, [role="button"]');
+            if (btn) {
+                btn.querySelector('svg')?.remove();
+                hasChanged = true;
+            }
+        } else if (target.type === 'card-badge' && target.cardIndex !== undefined) {
+            const cardEl = cards[target.cardIndex];
+            const badge = cardEl?.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+            if (badge) {
+                badge.querySelector('svg')?.remove();
+                hasChanged = true;
+            }
+        } else if (target.type === 'paragraph' && target.paragraphIndex !== undefined) {
+            const pEls = getStandaloneTextElements(sectionEl, cards);
+            const p = pEls[target.paragraphIndex];
+            if (p) {
+                p.querySelector('svg')?.remove();
+                p.parentElement?.querySelector('svg')?.remove();
+                hasChanged = true;
+            }
+        }
+
+        if (!hasChanged) return;
+        const updatedHtml = doc.documentElement.outerHTML;
+        pushHistory(updatedHtml);
+
+        // Surgical live DOM removal
+        if (iframeRef.current?.contentDocument) {
+            const liveDoc = iframeRef.current.contentDocument;
+            const liveSection = liveDoc.getElementById(selectedSectionId);
+            if (liveSection) {
+                const liveCards = getCardCandidates(liveSection);
+                let surgicalDone = false;
+
+                if (target.type === 'card' && target.cardIndex !== undefined) {
+                    const liveCard = liveCards[target.cardIndex];
+                    if (liveCard) {
+                        const liveBtn = liveCard.querySelector('a, button, [role="button"]');
+                        const liveBadge = liveCard.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+                        const liveExistingSvgs = Array.from(liveCard.querySelectorAll('svg')).filter(s => {
+                            if (liveBtn && liveBtn.contains(s)) return false;
+                            if (liveBadge && liveBadge.contains(s)) return false;
+                            return true;
+                        });
+                        if (liveExistingSvgs.length > 0) {
+                            const svgEl = liveExistingSvgs[0];
+                            const parent = svgEl.parentElement;
+                            if (parent && parent !== liveCard && (parent.textContent || '').trim().length === 0 && parent.children.length === 1) {
+                                parent.remove();
+                            } else {
+                                svgEl.remove();
+                            }
+                            surgicalDone = true;
+                        }
+                    }
+                } else if (target.type === 'link' && target.linkIndex !== undefined) {
+                    const liveLinks = getStandaloneLinks(liveSection, liveCards);
+                    const liveLink = liveLinks[target.linkIndex];
+                    if (liveLink) {
+                        liveLink.querySelector('svg')?.remove();
+                        surgicalDone = true;
+                    }
+                } else if (target.type === 'card-button' && target.cardIndex !== undefined) {
+                    const liveCard = liveCards[target.cardIndex];
+                    const liveBtn = liveCard?.querySelector('a, button, [role="button"]');
+                    if (liveBtn) {
+                        liveBtn.querySelector('svg')?.remove();
+                        surgicalDone = true;
+                    }
+                } else if (target.type === 'card-badge' && target.cardIndex !== undefined) {
+                    const liveCard = liveCards[target.cardIndex];
+                    const liveBadge = liveCard?.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]');
+                    if (liveBadge) {
+                        liveBadge.querySelector('svg')?.remove();
+                        surgicalDone = true;
+                    }
+                } else if (target.type === 'paragraph' && target.paragraphIndex !== undefined) {
+                    const livePs = getStandaloneTextElements(liveSection, liveCards);
+                    const liveP = livePs[target.paragraphIndex];
+                    if (liveP) {
+                        liveP.querySelector('svg')?.remove();
+                        liveP.parentElement?.querySelector('svg')?.remove();
+                        surgicalDone = true;
+                    }
+                }
+
+                if (!surgicalDone) {
+                    const updatedSection = doc.getElementById(selectedSectionId);
+                    if (updatedSection) {
+                        liveSection.innerHTML = updatedSection.innerHTML;
+                        liveSection.querySelectorAll('[data-aos]').forEach(el => el.classList.add('aos-animate'));
+                    }
+                }
+            }
+        }
+        setIconPickerTarget(null);
+        toast.success('Icon removed');
+    };
+
     // Update Card Content (Title, Description, Button, Image, Colors)
     const handleUpdateCardContent = (
         cardIndex: number,
@@ -1831,7 +2655,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
         if (updates.badge !== undefined) {
             const badgeEl = cardEl.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') as HTMLElement | null;
             if (badgeEl && (badgeEl.textContent || '') !== updates.badge) {
-                badgeEl.textContent = updates.badge;
+                updateElementTextPreservingSvg(badgeEl, updates.badge);
                 hasChanged = true;
             }
         }
@@ -1918,7 +2742,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             }
             if (btnEl) {
                 if (updates.buttonText !== undefined && (btnEl.textContent || '') !== updates.buttonText) {
-                    btnEl.textContent = updates.buttonText;
+                    updateElementTextPreservingSvg(btnEl, updates.buttonText);
                     hasChanged = true;
                 }
                 if (updates.buttonHref !== undefined && btnEl.getAttribute('href') !== updates.buttonHref) {
@@ -2015,7 +2839,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 if (liveCard) {
                     if (updates.badge !== undefined) {
                         const b = liveCard.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') as HTMLElement | null;
-                        if (b) b.textContent = updates.badge;
+                        if (b) updateElementTextPreservingSvg(b, updates.badge);
                     }
                     if (updates.badgeColor !== undefined) {
                         const b = liveCard.querySelector('[class*="rounded-full"], [class*="badge"], [class*="tag"], [class*="uppercase text-xs"]') as HTMLElement | null;
@@ -2038,8 +2862,8 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                         if (p) p.style.color = updates.descriptionColor || '';
                     }
                     if (updates.buttonText !== undefined) {
-                        const b = liveCard.querySelector('a, button, [role="button"]');
-                        if (b) b.textContent = updates.buttonText;
+                        const b = liveCard.querySelector('a, button, [role="button"]') as HTMLElement | null;
+                        if (b) updateElementTextPreservingSvg(b, updates.buttonText);
                     }
                     if (updates.buttonHref !== undefined) {
                         const b = liveCard.querySelector('a, button, [role="button"]');
@@ -2511,9 +3335,50 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
     const saveChanges = async () => {
         setIsSaving(true);
         try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                || (document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ? decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)![1]) : '');
+
+            // 1. Get the latest HTML from the live iframe or state
+            let htmlToSave = '';
+
+            if (iframeRef.current?.contentDocument) {
+                try {
+                    const docClone = iframeRef.current.contentDocument.documentElement.cloneNode(true) as HTMLElement;
+                    // Strip all editor selection/hover classes and badges
+                    docClone.querySelectorAll('.__ss-active-section, .__ss-active-element, .__ss-active-card').forEach(el => {
+                        el.classList.remove('__ss-active-section', '__ss-active-element', '__ss-active-card');
+                    });
+                    docClone.querySelectorAll('#__studiosync_preview_styles__, #__ss-selection-overlay__, #__ss-selection-label-badge__, #__ss-section-badge__, .__ss-section-badge').forEach(el => {
+                        el.remove();
+                    });
+                    docClone.querySelectorAll('[contenteditable]').forEach(el => {
+                        el.removeAttribute('contenteditable');
+                    });
+                    htmlToSave = '<!DOCTYPE html>\n' + docClone.outerHTML;
+                } catch {
+                    // Fallback to html state if clone fails
+                }
+            }
+
+            if (!htmlToSave || !htmlToSave.trim()) {
+                htmlToSave = html || project?.html_content || '';
+            }
+
+            // Remove editor visual preview artifacts if fallback html state was used
+            if (htmlToSave) {
+                htmlToSave = htmlToSave
+                    .replace(/\s*__ss-active-(section|element|card)/g, '')
+                    .replace(/\s*contenteditable="(true|false)"/g, '');
+            }
+
+            // Absolute guarantee: htmlToSave must never be empty
+            if (!htmlToSave || !htmlToSave.trim()) {
+                htmlToSave = project?.html_content || '<html><body></body></html>';
+            }
+
             const payload = {
-                html_content: html,
-                project_name: projectName
+                html_content: htmlToSave,
+                project_name: projectName || project?.project_name || 'Untitled Project',
             };
 
             const res = await fetch(`/projects/${project.id}`, {
@@ -2521,17 +3386,36 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken
                 },
                 body: JSON.stringify(payload)
             });
 
-            const data = await res.json();
-            if (res.ok && data.success) {
+            const resText = await res.text();
+            let data: any = null;
+            try {
+                data = JSON.parse(resText);
+            } catch {
+                // If response had PHP warning prepended to JSON, attempt to extract JSON substring
+                const jsonStart = resText.indexOf('{');
+                const jsonEnd = resText.lastIndexOf('}');
+                if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+                    try {
+                        data = JSON.parse(resText.substring(jsonStart, jsonEnd + 1));
+                    } catch {
+                        console.error('Non-JSON response received:', resText);
+                    }
+                }
+            }
+
+            if (res.ok && data?.success) {
+                setHtml(htmlToSave);
                 setIsDirty(false);
                 toast.success('Website changes saved successfully!');
             } else {
-                toast.error(data.message || 'Failed to save changes.');
+                const errorMsg = data?.message || (res.status === 422 ? 'Validation error: please check required fields.' : 'Failed to save changes.');
+                toast.error(errorMsg);
             }
         } catch (err) {
             console.error('Save failed:', err);
@@ -2563,19 +3447,33 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
             <Head title={`Editing ${projectName} - StudioSync`} />
 
             {/* TOP BAR */}
-            <header className="h-14 border-b border-zinc-800/80 bg-zinc-900/90 backdrop-blur px-4 flex items-center justify-between shrink-0 z-30">
-                {/* Left: Brand & Project Name */}
-                <div className="flex items-center gap-3">
+            <header className="h-14 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur px-2.5 sm:px-4 flex items-center justify-between shrink-0 z-30 gap-2">
+                {/* Left: Brand, Project Name & Layers Toggle */}
+                <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
                     <Link
                         href={project.workspace ? `/workspaces/${project.workspace.id}` : '/dashboard'}
-                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors shrink-0"
                         title="Back to Workspace"
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </Link>
 
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-zinc-400 font-medium">Projects /</span>
+                    {/* Left Sidebar Toggle Button */}
+                    <button
+                        type="button"
+                        onClick={() => setIsLeftSidebarOpen(prev => !prev)}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
+                            isLeftSidebarOpen
+                                ? 'text-primary bg-primary/10 border border-primary/20 shadow-xs'
+                                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                        }`}
+                        title={isLeftSidebarOpen ? "Hide Layers (Left Sidebar)" : "Show Layers (Left Sidebar)"}
+                    >
+                        <PanelLeft className="w-4 h-4" />
+                    </button>
+
+                    <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm min-w-0">
+                        <span className="text-zinc-500 font-medium hidden sm:inline">Projects /</span>
                         {isRenaming ? (
                             <input
                                 type="text"
@@ -2584,87 +3482,89 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                 onBlur={() => setIsRenaming(false)}
                                 onKeyDown={e => { if (e.key === 'Enter') setIsRenaming(false); }}
                                 autoFocus
-                                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary"
+                                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary w-24 sm:w-auto"
                             />
                         ) : (
                             <button
                                 onClick={() => setIsRenaming(true)}
-                                className="font-semibold text-zinc-100 hover:text-primary transition-colors cursor-pointer"
+                                className="font-semibold text-zinc-100 hover:text-primary transition-colors cursor-pointer truncate max-w-[90px] xs:max-w-[130px] sm:max-w-[180px] md:max-w-[240px]"
                                 title="Click to rename"
                             >
                                 {projectName}
                             </button>
                         )}
 
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50 hidden md:inline">
                             Home
                         </span>
 
                         {isDirty ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40 animate-pulse">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Unsaved
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/40 px-1.5 sm:px-2 py-0.5 rounded border border-amber-800/40 animate-pulse shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                <span className="hidden sm:inline">Unsaved</span>
                             </span>
                         ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-800/40">
-                                <Check className="w-3 h-3" /> Saved
+                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/40 px-1.5 sm:px-2 py-0.5 rounded border border-emerald-800/40 shrink-0">
+                                <Check className="w-3 h-3" />
+                                <span className="hidden sm:inline">Saved</span>
                             </span>
                         )}
                     </div>
                 </div>
 
                 {/* Center: Device Switcher & History Controls */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                     {/* Viewport Toggles */}
                     <div className="flex items-center bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60">
                         <button
                             onClick={() => setViewportMode('desktop')}
-                            className={`p-1.5 rounded-md transition-all cursor-pointer ${viewportMode === 'desktop' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${viewportMode === 'desktop' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
                             title="Desktop View (100%)"
                         >
-                            <Monitor className="w-4 h-4" />
+                            <Monitor className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                         <button
                             onClick={() => setViewportMode('tablet')}
-                            className={`p-1.5 rounded-md transition-all cursor-pointer ${viewportMode === 'tablet' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${viewportMode === 'tablet' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
                             title="Tablet View (768px)"
                         >
-                            <Tablet className="w-4 h-4" />
+                            <Tablet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                         <button
                             onClick={() => setViewportMode('mobile')}
-                            className={`p-1.5 rounded-md transition-all cursor-pointer ${viewportMode === 'mobile' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${viewportMode === 'mobile' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
                             title="Mobile View (375px)"
                         >
-                            <Smartphone className="w-4 h-4" />
+                            <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                     </div>
 
-                    <div className="h-4 w-px bg-zinc-800"></div>
+                    <div className="hidden sm:block h-4 w-px bg-zinc-800"></div>
 
                     {/* Undo / Redo */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 sm:gap-1">
                         <button
                             onClick={handleUndo}
                             disabled={historyIndex <= 0}
-                            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                            className="p-1 sm:p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
                             title="Undo (Ctrl+Z)"
                         >
-                            <Undo2 className="w-4 h-4" />
+                            <Undo2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                         <button
                             onClick={handleRedo}
                             disabled={historyIndex >= history.length - 1}
-                            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                            className="p-1 sm:p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
                             title="Redo (Ctrl+Y)"
                         >
-                            <Redo2 className="w-4 h-4" />
+                            <Redo2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                     </div>
 
-                    <div className="h-4 w-px bg-zinc-800"></div>
+                    <div className="hidden md:block h-4 w-px bg-zinc-800"></div>
 
                     {/* Visual vs Code Mode */}
-                    <div className="flex items-center bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60">
+                    <div className="hidden md:flex items-center bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60">
                         <button
                             onClick={() => {
                                 if (viewMode === 'code') {
@@ -2685,46 +3585,81 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                     </div>
                 </div>
 
-                {/* Right: Actions */}
-                <div className="flex items-center gap-3">
+                {/* Right: Actions & Properties Toggle */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                    {/* Right Sidebar Toggle Button */}
+                    <button
+                        type="button"
+                        onClick={() => setIsRightSidebarOpen(prev => !prev)}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            isRightSidebarOpen
+                                ? 'text-primary bg-primary/10 border border-primary/20 shadow-xs'
+                                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                        }`}
+                        title={isRightSidebarOpen ? "Hide Inspector (Right Sidebar)" : "Show Inspector (Right Sidebar)"}
+                    >
+                        <PanelRight className="w-4 h-4" />
+                    </button>
+
                     <button
                         onClick={() => {
                             const blob = new Blob([html], { type: 'text/html' });
                             const url = URL.createObjectURL(blob);
                             window.open(url, '_blank');
                         }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                        className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors flex items-center gap-1.5 cursor-pointer"
                         title="Preview generated site in a new browser tab"
                     >
-                        <ExternalLink className="w-3.5 h-3.5" /> Preview
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Preview</span>
                     </button>
 
                     <button
                         onClick={saveChanges}
                         disabled={isSaving}
-                        className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-950/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-2.5 sm:px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-950/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
                         {isSaving ? (
-                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline"> Saving...</span></>
                         ) : (
-                            <><Save className="w-3.5 h-3.5" /> Publish Changes</>
+                            <><Save className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Publish</span></>
                         )}
                     </button>
                 </div>
             </header>
 
-            {/* MAIN WORKSPACE AREA (3 COLUMNS) */}
-            <div className="flex-1 flex overflow-hidden">
+            {/* MAIN WORKSPACE AREA (3 COLUMNS / RESPONSIVE DRAWERS) */}
+            <div className="flex-1 flex overflow-hidden relative">
+                {/* Mobile Backdrop for Left Sidebar */}
+                {isLeftSidebarOpen && (
+                    <div
+                        onClick={() => setIsLeftSidebarOpen(false)}
+                        className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-30 transition-opacity"
+                    />
+                )}
+
                 {/* LEFT SIDEBAR: LAYERS */}
-                <aside className="w-64 border-r border-zinc-800 bg-zinc-900/60 flex flex-col shrink-0">
+                <aside className={`
+                    ${isLeftSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:hidden'}
+                    fixed lg:static inset-y-0 left-0 z-40 lg:z-10
+                    w-72 sm:w-80 lg:w-64 border-r border-zinc-800 bg-zinc-900 flex flex-col shrink-0
+                    transition-transform duration-300 ease-in-out shadow-2xl lg:shadow-none
+                `}>
                     <div className="p-3 border-b border-zinc-800/80 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Layers className="w-4 h-4 text-zinc-400" />
                             <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">Layers</span>
+                            <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
+                                {layers.length}
+                            </span>
                         </div>
-                        <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">
-                            {layers.length}
-                        </span>
+                        <button
+                            onClick={() => setIsLeftSidebarOpen(false)}
+                            className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
+                            title="Close Layers Panel"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
 
                     {/* Layers List */}
@@ -2808,10 +3743,10 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 </aside>
 
                 {/* CENTER CANVAS AREA WITH BREADCRUMB HEADER */}
-                <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative">
+                <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative min-w-0">
                     {/* Selection Breadcrumb Bar */}
                     {viewMode === 'visual' && (selectedSectionId || highlightedTarget) && (
-                        <div className="h-9 px-4 bg-zinc-900/90 border-b border-zinc-800/80 flex items-center gap-1.5 text-xs shrink-0 z-20">
+                        <div className="h-9 px-3 sm:px-4 bg-zinc-900/90 border-b border-zinc-800/80 flex items-center gap-1.5 text-xs shrink-0 z-20 overflow-x-auto whitespace-nowrap scrollbar-none">
                             <MousePointer className="w-3.5 h-3.5 text-zinc-400" />
                             <button
                                 onClick={() => {
@@ -2823,8 +3758,10 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                     if (doc) {
                                         doc.querySelectorAll('.__ss-active-element').forEach(el => el.classList.remove('__ss-active-element'));
                                         doc.querySelectorAll('.__ss-active-card').forEach(el => el.classList.remove('__ss-active-card'));
-                                        const badge = doc.getElementById('__ss-selection-label-badge__');
-                                        if (badge) badge.remove();
+                                        doc.getElementById('__ss-selection-label-badge__')?.remove();
+                                        doc.getElementById('__ss-selection-overlay__')?.remove();
+                                        doc.getElementById('__ss-hover-label-badge__')?.remove();
+                                        doc.getElementById('__ss-hover-overlay__')?.remove();
                                     }
                                 }}
                                 className="font-medium text-zinc-300 hover:text-zinc-100 transition-colors flex items-center gap-1 cursor-pointer"
@@ -2862,8 +3799,10 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                         if (doc) {
                                             doc.querySelectorAll('.__ss-active-element').forEach(el => el.classList.remove('__ss-active-element'));
                                             doc.querySelectorAll('.__ss-active-card').forEach(el => el.classList.remove('__ss-active-card'));
-                                            const badge = doc.getElementById('__ss-selection-label-badge__');
-                                            if (badge) badge.remove();
+                                            doc.getElementById('__ss-selection-label-badge__')?.remove();
+                                            doc.getElementById('__ss-selection-overlay__')?.remove();
+                                            doc.getElementById('__ss-hover-label-badge__')?.remove();
+                                            doc.getElementById('__ss-hover-overlay__')?.remove();
                                         }
                                     }}
                                     className="ml-auto text-[11px] text-zinc-400 hover:text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700 px-2 py-0.5 rounded transition-colors flex items-center gap-1 cursor-pointer"
@@ -2886,16 +3825,18 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                 if (doc) {
                                     doc.querySelectorAll('.__ss-active-element').forEach(el => el.classList.remove('__ss-active-element'));
                                     doc.querySelectorAll('.__ss-active-card').forEach(el => el.classList.remove('__ss-active-card'));
-                                    const badge = doc.getElementById('__ss-selection-label-badge__');
-                                    if (badge) badge.remove();
+                                    doc.getElementById('__ss-selection-label-badge__')?.remove();
+                                    doc.getElementById('__ss-selection-overlay__')?.remove();
+                                    doc.getElementById('__ss-hover-label-badge__')?.remove();
+                                    doc.getElementById('__ss-hover-overlay__')?.remove();
                                 }
                             }
                         }}
-                        className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col items-center justify-center relative cursor-default"
+                        className="flex-1 p-2 sm:p-4 md:p-6 overflow-hidden flex flex-col items-center justify-center relative cursor-default min-w-0 min-h-0"
                     >
                         {viewMode === 'visual' ? (
                         <div
-                            className={`h-full w-full flex items-center justify-center transition-all duration-300 ${
+                            className={`h-full w-full flex items-center justify-center transition-all duration-300 min-w-0 ${
                                 viewportMode === 'desktop'
                                     ? 'max-w-full'
                                     : viewportMode === 'tablet'
@@ -2903,7 +3844,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                     : 'max-w-[375px]'
                             }`}
                         >
-                            <div className="w-full h-full bg-white rounded-xl shadow-2xl border border-zinc-800 overflow-hidden relative flex flex-col">
+                            <div className="w-full h-full bg-white rounded-lg sm:rounded-xl shadow-2xl border border-zinc-800 overflow-hidden relative flex flex-col min-w-0">
                                 {/* Device header bar for tablet/mobile frame */}
                                 {viewportMode !== 'desktop' && (
                                     <div className="h-6 bg-zinc-800 text-zinc-400 text-[10px] flex items-center justify-between px-3 border-b border-zinc-700 select-none">
@@ -2950,10 +3891,23 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                 </main>
                 </div>
 
+                {/* Mobile Backdrop for Right Sidebar */}
+                {isRightSidebarOpen && (
+                    <div
+                        onClick={() => setIsRightSidebarOpen(false)}
+                        className="xl:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-30 transition-opacity"
+                    />
+                )}
+
                 {/* RIGHT SIDEBAR: FULL EDITING INSPECTOR PANEL */}
-                <aside className="w-84 sm:w-96 border-l border-zinc-800 bg-zinc-900/90 flex flex-col shrink-0 overflow-hidden">
+                <aside className={`
+                    ${isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full xl:hidden'}
+                    fixed xl:static inset-y-0 right-0 z-40 xl:z-10
+                    w-full sm:w-96 xl:w-96 border-l border-zinc-800 bg-zinc-900/95 flex flex-col shrink-0 overflow-hidden
+                    transition-transform duration-300 ease-in-out shadow-2xl xl:shadow-none
+                `}>
                     {/* Tabs Header */}
-                    <div className="flex border-b border-zinc-800 shrink-0">
+                    <div className="flex items-center border-b border-zinc-800 shrink-0">
                         <button
                             onClick={() => setActiveTab('properties')}
                             className={`flex-1 py-3 text-xs font-semibold text-center transition-colors cursor-pointer border-b-2 ${
@@ -2974,17 +3928,24 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                         >
                             Design Presets
                         </button>
+                        <button
+                            onClick={() => setIsRightSidebarOpen(false)}
+                            className="p-3 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border-l border-zinc-800 cursor-pointer"
+                            title="Close Inspector"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
 
                     {/* Tab Content */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-6">
                         {activeTab === 'properties' ? (
                             <div className="space-y-6">
-                                {/* Interactive Canvas Tip */}
+                                {/* Section-Based Workflow Tip */}
                                 <div className="flex items-start gap-2.5 px-3 py-2.5 bg-primary/10 border border-primary/20 rounded-xl text-primary text-xs">
                                     <Sparkles className="w-4 h-4 text-primary shrink-0 mt-0.5 animate-pulse" />
                                     <div className="text-[11px] leading-snug">
-                                        <strong className="font-semibold text-zinc-100">Interactive Canvas:</strong> Click any text, button, image, or card directly on the preview to jump straight to its settings here.
+                                        <strong className="font-semibold text-zinc-100">Section Editor:</strong> Select a section on the left, then click any field below to instantly highlight and focus that element on your website.
                                     </div>
                                 </div>
 
@@ -3029,7 +3990,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                     ))}
                                                 </div>
                                                 <p className="text-[10px] text-zinc-500 pt-0.5 leading-relaxed">
-                                                    Click any element directly on the canvas to inspect its settings, or tweak section styles below.
+                                                    Click any field below to edit and automatically highlight it on the live preview.
                                                 </p>
                                             </div>
                                         )}
@@ -3037,10 +3998,11 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                         {/* SECTION-LEVEL STYLING & GROUP COLORS */}
                                         <div
                                             id="editor-control-section-0"
-                                            className={`space-y-3 p-3.5 rounded-xl transition-all duration-300 ${
+                                            onClick={() => handleSidebarSelect('section', 0)}
+                                            className={`space-y-3 p-3.5 rounded-xl transition-all duration-300 cursor-pointer ${
                                                 highlightedTarget?.type === 'section'
                                                     ? 'bg-primary/10 border-2 border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
-                                                    : 'bg-zinc-800/30 border border-zinc-800'
+                                                    : 'bg-zinc-800/30 border border-zinc-800 hover:border-zinc-700'
                                             }`}
                                         >
                                             <div className="flex items-center justify-between">
@@ -3171,7 +4133,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                 <div
                                                                     key={`${selectedSectionId}-heading-${heading.index}`}
                                                                     id={`editor-control-heading-${heading.index}`}
-                                                                    onClick={() => highlightElementInIframe('heading', heading.index)}
+                                                                    onClick={() => handleSidebarSelect('heading', heading.index)}
                                                                     className={`space-y-2.5 p-3 rounded-lg transition-all duration-300 ${
                                                                         isHighlighted
                                                                             ? 'bg-primary/10 border-2 border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
@@ -3194,7 +4156,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     <textarea
                                                                         rows={2}
                                                                         defaultValue={heading.text}
-                                                                        onFocus={() => highlightElementInIframe('heading', heading.index)}
+                                                                        onFocus={() => handleSidebarSelect('heading', heading.index)}
                                                                         onBlur={(e) => handleUpdateHeading(heading.index, e.target.value)}
                                                                         placeholder="Enter title text..."
                                                                         className="w-full bg-zinc-900 border border-zinc-700/80 rounded-md p-2 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary resize-none leading-relaxed"
@@ -3269,7 +4231,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                 <div
                                                                     key={`${selectedSectionId}-paragraph-${p.index}`}
                                                                     id={`editor-control-paragraph-${p.index}`}
-                                                                    onClick={() => highlightElementInIframe('paragraph', p.index)}
+                                                                    onClick={() => handleSidebarSelect('paragraph', p.index)}
                                                                     className={`space-y-2.5 p-3 rounded-lg transition-all duration-300 ${
                                                                         isHighlighted
                                                                             ? 'bg-primary/10 border-2 border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
@@ -3292,7 +4254,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     <textarea
                                                                         rows={3}
                                                                         defaultValue={p.text}
-                                                                        onFocus={() => highlightElementInIframe('paragraph', p.index)}
+                                                                        onFocus={() => handleSidebarSelect('paragraph', p.index)}
                                                                         onBlur={(e) => handleUpdateParagraph(p.index, e.target.value)}
                                                                         placeholder="Enter paragraph text..."
                                                                         className="w-full bg-zinc-900 border border-zinc-700/80 rounded-md p-2 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary resize-none leading-relaxed"
@@ -3336,6 +4298,71 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 </button>
                                                                             )}
                                                                         </div>
+                                                                    </div>
+
+                                                                    {/* Paragraph / Kicker Icon Control */}
+                                                                    <div className="flex items-center justify-between pt-1 border-t border-zinc-800/70">
+                                                                        <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1.5">
+                                                                            <Smile className="w-3 h-3 text-amber-400" />
+                                                                            <span>Icon:</span>
+                                                                        </span>
+                                                                        {p.hasIcon && p.iconSvg ? (
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <div
+                                                                                    className="w-5 h-5 flex items-center justify-center text-primary bg-zinc-900 border border-zinc-700/60 rounded cursor-pointer overflow-hidden [&>svg]:w-3.5 [&>svg]:h-3.5"
+                                                                                    dangerouslySetInnerHTML={{ __html: p.iconSvg }}
+                                                                                    onClick={() => setIconPickerTarget({
+                                                                                        type: 'paragraph',
+                                                                                        paragraphIndex: p.index,
+                                                                                        currentSvg: p.iconSvg,
+                                                                                        label: `${p.tag === 'span' ? 'Badge' : 'Text'} #${p.index + 1} Icon`,
+                                                                                        allowPosition: true,
+                                                                                        currentPosition: 'left',
+                                                                                    })}
+                                                                                    title="Click to change icon"
+                                                                                />
+                                                                                <button
+                                                                                    onClick={() => setIconPickerTarget({
+                                                                                        type: 'paragraph',
+                                                                                        paragraphIndex: p.index,
+                                                                                        currentSvg: p.iconSvg,
+                                                                                        label: `${p.tag === 'span' ? 'Badge' : 'Text'} #${p.index + 1} Icon`,
+                                                                                        allowPosition: true,
+                                                                                        currentPosition: 'left',
+                                                                                    })}
+                                                                                    className="text-[10px] text-primary hover:underline cursor-pointer"
+                                                                                >
+                                                                                    Change
+                                                                                </button>
+                                                                                <span className="text-zinc-600">·</span>
+                                                                                <button
+                                                                                    onClick={() => handleRemoveIcon({
+                                                                                        type: 'paragraph',
+                                                                                        paragraphIndex: p.index,
+                                                                                        label: 'Paragraph Icon',
+                                                                                    })}
+                                                                                    className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
+                                                                                >
+                                                                                    Remove
+                                                                                </button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setIconPickerTarget({
+                                                                                    type: 'paragraph',
+                                                                                    paragraphIndex: p.index,
+                                                                                    currentSvg: '',
+                                                                                    label: `${p.tag === 'span' ? 'Badge' : 'Text'} #${p.index + 1} Icon`,
+                                                                                    allowPosition: true,
+                                                                                    currentPosition: 'left',
+                                                                                })}
+                                                                                className="text-[10px] text-zinc-400 hover:text-primary flex items-center gap-1 py-0.5 px-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 cursor-pointer transition-colors"
+                                                                            >
+                                                                                <Plus className="w-2.5 h-2.5" />
+                                                                                <span>Add Icon</span>
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             );
@@ -3430,7 +4457,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                             <div
                                                                 key={`${selectedSectionId}-card-${card.index}`}
                                                                 id={`editor-control-card-${card.index}`}
-                                                                onClick={() => highlightElementInIframe('card', card.index)}
+                                                                onClick={() => handleSidebarSelect('card', card.index)}
                                                                 className={`space-y-3 p-3.5 rounded-xl transition-all duration-300 ${
                                                                     isHighlighted
                                                                         ? 'bg-primary/10 border-2 border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
@@ -3469,6 +4496,87 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     </div>
                                                                 </div>
 
+                                                                {/* Card Icon */}
+                                                                <div className="space-y-1.5 p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <label className="text-[11px] font-semibold text-zinc-300 flex items-center gap-1.5">
+                                                                            <Smile className="w-3.5 h-3.5 text-amber-400" />
+                                                                            <span>Card Icon</span>
+                                                                        </label>
+                                                                        {card.hasIcon && card.iconSvg && (
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setIconPickerTarget({
+                                                                                        type: 'card',
+                                                                                        cardIndex: card.index,
+                                                                                        currentSvg: card.iconSvg,
+                                                                                        label: `Card #${card.index + 1} Icon`,
+                                                                                        allowContainerStyle: true,
+                                                                                    })}
+                                                                                    className="text-[10px] text-primary hover:underline cursor-pointer"
+                                                                                >
+                                                                                    Change
+                                                                                </button>
+                                                                                <span className="text-zinc-600">·</span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleRemoveIcon({
+                                                                                        type: 'card',
+                                                                                        cardIndex: card.index,
+                                                                                        label: `Card #${card.index + 1} Icon`,
+                                                                                    })}
+                                                                                    className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
+                                                                                >
+                                                                                    Remove
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    {card.hasIcon && card.iconSvg ? (
+                                                                        <div
+                                                                            onClick={() => {
+                                                                                handleSidebarSelect('card', card.index, 'icon');
+                                                                                setIconPickerTarget({
+                                                                                    type: 'card',
+                                                                                    cardIndex: card.index,
+                                                                                    currentSvg: card.iconSvg,
+                                                                                    label: `Card #${card.index + 1} Icon`,
+                                                                                    allowContainerStyle: true,
+                                                                                });
+                                                                            }}
+                                                                            className="flex items-center gap-3 p-2 rounded bg-zinc-850 border border-zinc-700/60 hover:border-primary/60 cursor-pointer transition-colors group"
+                                                                        >
+                                                                            <div
+                                                                                className="w-8 h-8 rounded flex items-center justify-center bg-zinc-900 border border-zinc-700/80 text-primary shrink-0 [&>svg]:w-5 [&>svg]:h-5 group-hover:scale-105 transition-transform"
+                                                                                dangerouslySetInnerHTML={{ __html: card.iconSvg }}
+                                                                            />
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className="text-xs text-zinc-200 truncate font-medium">Active Card Icon</p>
+                                                                                <p className="text-[10px] text-zinc-500">Click to change icon or container style</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                handleSidebarSelect('card', card.index);
+                                                                                setIconPickerTarget({
+                                                                                    type: 'card',
+                                                                                    cardIndex: card.index,
+                                                                                    currentSvg: '',
+                                                                                    label: `Card #${card.index + 1} Icon`,
+                                                                                    allowContainerStyle: true,
+                                                                                });
+                                                                            }}
+                                                                            className="w-full py-1.5 px-2.5 rounded text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-850 hover:bg-zinc-800 border border-dashed border-zinc-700/80 hover:border-zinc-500 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                        >
+                                                                            <Plus className="w-3.5 h-3.5 text-primary" />
+                                                                            <span>Add Icon to Card</span>
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+
                                                                 {/* 0. Card Badge / Category Tag */}
                                                                 {(card.hasBadge || card.badge || highlightedTarget?.subField === 'badge') && (
                                                                     <div className="space-y-1.5">
@@ -3482,7 +4590,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 <input
                                                                                     type="color"
                                                                                     value={normalizeHex(card.badgeColor || currentColors.primary)}
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index, 'badge')}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'badge')}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { badgeColor: e.target.value })}
                                                                                     className="w-4 h-4 rounded border-0 bg-transparent cursor-pointer"
                                                                                     title="Badge Text Color"
@@ -3502,10 +4610,71 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             data-card-field="badge"
                                                                             value={card.badge || ''}
                                                                             placeholder="Category tag or badge text (e.g. SaaS Design)..."
-                                                                            onFocus={() => highlightElementInIframe('card', card.index, 'badge')}
+                                                                            onFocus={() => handleSidebarSelect('card', card.index, 'badge')}
                                                                             onChange={(e) => handleUpdateCardContent(card.index, { badge: e.target.value })}
                                                                             className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2.5 py-1.5 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                                                                         />
+                                                                        <div className="flex items-center justify-between pt-1">
+                                                                            <span className="text-[10px] text-zinc-400">Badge Icon:</span>
+                                                                            {card.badgeHasIcon && card.badgeIconSvg ? (
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <div
+                                                                                        className="w-5 h-5 flex items-center justify-center text-primary bg-zinc-900 border border-zinc-700/60 rounded cursor-pointer overflow-hidden [&>svg]:w-3.5 [&>svg]:h-3.5"
+                                                                                        dangerouslySetInnerHTML={{ __html: card.badgeIconSvg }}
+                                                                                        onClick={() => setIconPickerTarget({
+                                                                                            type: 'card-badge',
+                                                                                            cardIndex: card.index,
+                                                                                            currentSvg: card.badgeIconSvg,
+                                                                                            label: `Card #${card.index + 1} Badge Icon`,
+                                                                                            allowPosition: true,
+                                                                                            currentPosition: 'left',
+                                                                                        })}
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setIconPickerTarget({
+                                                                                            type: 'card-badge',
+                                                                                            cardIndex: card.index,
+                                                                                            currentSvg: card.badgeIconSvg,
+                                                                                            label: `Card #${card.index + 1} Badge Icon`,
+                                                                                            allowPosition: true,
+                                                                                            currentPosition: 'left',
+                                                                                        })}
+                                                                                        className="text-[10px] text-primary hover:underline cursor-pointer"
+                                                                                    >
+                                                                                        Change
+                                                                                    </button>
+                                                                                    <span className="text-zinc-600">·</span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleRemoveIcon({
+                                                                                            type: 'card-badge',
+                                                                                            cardIndex: card.index,
+                                                                                            label: `Card #${card.index + 1} Badge Icon`,
+                                                                                        })}
+                                                                                        className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setIconPickerTarget({
+                                                                                        type: 'card-badge',
+                                                                                        cardIndex: card.index,
+                                                                                        currentSvg: '',
+                                                                                        label: `Card #${card.index + 1} Badge Icon`,
+                                                                                        allowPosition: true,
+                                                                                        currentPosition: 'left',
+                                                                                    })}
+                                                                                    className="text-[10px] text-zinc-400 hover:text-primary flex items-center gap-1 py-0.5 px-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 cursor-pointer transition-colors"
+                                                                                >
+                                                                                    <Plus className="w-2.5 h-2.5" />
+                                                                                    <span>Add Badge Icon</span>
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 )}
 
@@ -3521,7 +4690,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             <input
                                                                                 type="color"
                                                                                 value={normalizeHex(card.titleColor || card.color || currentColors.text)}
-                                                                                onFocus={() => highlightElementInIframe('card', card.index, 'title')}
+                                                                                onFocus={() => handleSidebarSelect('card', card.index, 'title')}
                                                                                 onChange={(e) => handleUpdateCardContent(card.index, { titleColor: e.target.value })}
                                                                                 className="w-4 h-4 rounded border-0 bg-transparent cursor-pointer"
                                                                                 title="Title Text Color"
@@ -3541,7 +4710,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                         data-card-field="title"
                                                                         value={card.title}
                                                                         placeholder="Enter card title or heading..."
-                                                                        onFocus={() => highlightElementInIframe('card', card.index, 'title')}
+                                                                        onFocus={() => handleSidebarSelect('card', card.index, 'title')}
                                                                         onChange={(e) => handleUpdateCardContent(card.index, { title: e.target.value })}
                                                                         className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2.5 py-1.5 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                                                                     />
@@ -3559,7 +4728,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             <input
                                                                                 type="color"
                                                                                 value={normalizeHex(card.descriptionColor || card.color || currentColors.textMuted)}
-                                                                                onFocus={() => highlightElementInIframe('card', card.index, 'description')}
+                                                                                onFocus={() => handleSidebarSelect('card', card.index, 'description')}
                                                                                 onChange={(e) => handleUpdateCardContent(card.index, { descriptionColor: e.target.value })}
                                                                                 className="w-4 h-4 rounded border-0 bg-transparent cursor-pointer"
                                                                                 title="Description Text Color"
@@ -3579,7 +4748,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                         data-card-field="description"
                                                                         value={card.description}
                                                                         placeholder="Enter card description or feature details..."
-                                                                        onFocus={() => highlightElementInIframe('card', card.index, 'description')}
+                                                                        onFocus={() => handleSidebarSelect('card', card.index, 'description')}
                                                                         onChange={(e) => handleUpdateCardContent(card.index, { description: e.target.value })}
                                                                         className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2.5 py-1.5 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none resize-y leading-relaxed"
                                                                     />
@@ -3598,7 +4767,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 <input
                                                                                     type="color"
                                                                                     value={normalizeHex(card.buttonBg || currentColors.primary)}
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index, 'button')}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'button')}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { buttonBg: e.target.value })}
                                                                                     className="w-4 h-4 rounded border-0 bg-transparent cursor-pointer"
                                                                                     title="Button Background Color"
@@ -3607,7 +4776,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 <input
                                                                                     type="color"
                                                                                     value={normalizeHex(card.buttonColor || currentColors.primaryText || '#ffffff')}
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index, 'button')}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'button')}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { buttonColor: e.target.value })}
                                                                                     className="w-4 h-4 rounded border-0 bg-transparent cursor-pointer"
                                                                                     title="Button Text Color"
@@ -3621,7 +4790,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             data-card-field="button"
                                                                             value={card.buttonText}
                                                                             placeholder="Button text (e.g. Learn More)"
-                                                                            onFocus={() => highlightElementInIframe('card', card.index, 'button')}
+                                                                            onFocus={() => handleSidebarSelect('card', card.index, 'button')}
                                                                             onChange={(e) => handleUpdateCardContent(card.index, { buttonText: e.target.value })}
                                                                             className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2.5 py-1.5 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
                                                                         />
@@ -3629,11 +4798,76 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             type="text"
                                                                             value={card.buttonHref}
                                                                             placeholder="URL (e.g. #contact, /about)"
-                                                                            onFocus={() => highlightElementInIframe('card', card.index, 'button')}
+                                                                            onFocus={() => handleSidebarSelect('card', card.index, 'button')}
                                                                             onChange={(e) => handleUpdateCardContent(card.index, { buttonHref: e.target.value })}
                                                                             className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2.5 py-1.5 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none font-mono text-[11px]"
                                                                         />
                                                                     </div>
+
+                                                                    {/* Card Button Icon */}
+                                                                    {card.buttonText && (
+                                                                        <div className="flex items-center justify-between pt-1">
+                                                                            <span className="text-[10px] text-zinc-400">Button Icon:</span>
+                                                                            {card.buttonHasIcon && card.buttonIconSvg ? (
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <div
+                                                                                        className="w-5 h-5 flex items-center justify-center text-primary bg-zinc-900 border border-zinc-700/60 rounded cursor-pointer overflow-hidden [&>svg]:w-3.5 [&>svg]:h-3.5"
+                                                                                        dangerouslySetInnerHTML={{ __html: card.buttonIconSvg }}
+                                                                                        onClick={() => setIconPickerTarget({
+                                                                                            type: 'card-button',
+                                                                                            cardIndex: card.index,
+                                                                                            currentSvg: card.buttonIconSvg,
+                                                                                            currentPosition: card.buttonIconPosition || 'right',
+                                                                                            label: `Card #${card.index + 1} Button Icon`,
+                                                                                            allowPosition: true,
+                                                                                        })}
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setIconPickerTarget({
+                                                                                            type: 'card-button',
+                                                                                            cardIndex: card.index,
+                                                                                            currentSvg: card.buttonIconSvg,
+                                                                                            currentPosition: card.buttonIconPosition || 'right',
+                                                                                            label: `Card #${card.index + 1} Button Icon`,
+                                                                                            allowPosition: true,
+                                                                                        })}
+                                                                                        className="text-[10px] text-primary hover:underline cursor-pointer"
+                                                                                    >
+                                                                                        Change ({card.buttonIconPosition || 'right'})
+                                                                                    </button>
+                                                                                    <span className="text-zinc-600">·</span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleRemoveIcon({
+                                                                                            type: 'card-button',
+                                                                                            cardIndex: card.index,
+                                                                                            label: `Card #${card.index + 1} Button Icon`,
+                                                                                        })}
+                                                                                        className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => setIconPickerTarget({
+                                                                                        type: 'card-button',
+                                                                                        cardIndex: card.index,
+                                                                                        currentSvg: '',
+                                                                                        currentPosition: 'right',
+                                                                                        label: `Card #${card.index + 1} Button Icon`,
+                                                                                        allowPosition: true,
+                                                                                    })}
+                                                                                    className="text-[10px] text-zinc-400 hover:text-primary flex items-center gap-1 py-0.5 px-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 cursor-pointer transition-colors"
+                                                                                >
+                                                                                    <Plus className="w-2.5 h-2.5" />
+                                                                                    <span>Add Button Icon</span>
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
 
                                                                 {/* 4. Card Image (if present or editable) */}
@@ -3655,7 +4889,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                     data-card-field="image"
                                                                                     value={card.imageSrc}
                                                                                     placeholder="Image URL..."
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index, 'image')}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'image')}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { imageSrc: e.target.value })}
                                                                                     className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2 py-1 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none font-mono text-[11px]"
                                                                                 />
@@ -3663,7 +4897,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                     type="text"
                                                                                     value={card.imageAlt}
                                                                                     placeholder="Alt description..."
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index, 'image')}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index, 'image')}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { imageAlt: e.target.value })}
                                                                                     className="w-full text-xs bg-zinc-900 border border-zinc-700/80 rounded-md px-2 py-1 text-zinc-100 placeholder-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none text-[11px]"
                                                                                 />
@@ -3684,7 +4918,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 <input
                                                                                     type="color"
                                                                                     value={normalizeHex(card.backgroundColor || currentColors.surface)}
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index)}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index)}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { bg: e.target.value })}
                                                                                     className="w-5 h-5 rounded border-0 bg-transparent cursor-pointer shrink-0"
                                                                                     title="Card Background Color"
@@ -3704,7 +4938,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 <input
                                                                                     type="color"
                                                                                     value={normalizeHex(card.borderColor || currentColors.border || '#334155')}
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index)}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index)}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { border: e.target.value })}
                                                                                     className="w-5 h-5 rounded border-0 bg-transparent cursor-pointer shrink-0"
                                                                                     title="Card Border Color"
@@ -3724,7 +4958,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 <input
                                                                                     type="color"
                                                                                     value={normalizeHex(card.color || currentColors.text)}
-                                                                                    onFocus={() => highlightElementInIframe('card', card.index)}
+                                                                                    onFocus={() => handleSidebarSelect('card', card.index)}
                                                                                     onChange={(e) => handleUpdateCardContent(card.index, { color: e.target.value })}
                                                                                     className="w-5 h-5 rounded border-0 bg-transparent cursor-pointer shrink-0"
                                                                                     title="Card Text Color"
@@ -3770,7 +5004,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                             <div
                                                                 key={`${selectedSectionId}-link-${link.index}`}
                                                                 id={`editor-control-link-${link.index}`}
-                                                                onClick={() => highlightElementInIframe('link', link.index)}
+                                                                onClick={() => handleSidebarSelect('link', link.index)}
                                                                 className={`space-y-2.5 p-3 rounded-lg transition-all duration-300 ${
                                                                     isHighlighted
                                                                         ? 'bg-primary/10 border-2 border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
@@ -3796,7 +5030,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     <input
                                                                         type="text"
                                                                         defaultValue={link.text}
-                                                                        onFocus={() => highlightElementInIframe('link', link.index)}
+                                                                        onFocus={() => handleSidebarSelect('link', link.index)}
                                                                         onBlur={(e) => handleUpdateLink(link.index, { text: e.target.value })}
                                                                         placeholder="Label..."
                                                                         className="w-full bg-zinc-900 border border-zinc-700/80 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary"
@@ -3808,7 +5042,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     <input
                                                                         type="text"
                                                                         defaultValue={link.href}
-                                                                        onFocus={() => highlightElementInIframe('link', link.index)}
+                                                                        onFocus={() => handleSidebarSelect('link', link.index)}
                                                                         onBlur={(e) => handleUpdateLink(link.index, { href: e.target.value })}
                                                                         placeholder="#contact or https://..."
                                                                         className="w-full bg-zinc-900 border border-zinc-700/80 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary font-mono text-[11px]"
@@ -3854,7 +5088,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             <input
                                                                                 type="color"
                                                                                 value={normalizeHex(link.backgroundColor || currentColors.primary)}
-                                                                                onFocus={() => highlightElementInIframe('link', link.index)}
+                                                                                onFocus={() => handleSidebarSelect('link', link.index)}
                                                                                 onChange={(e) => handleUpdateLink(link.index, { bg: e.target.value })}
                                                                                 className="w-6 h-6 rounded border-0 bg-transparent cursor-pointer"
                                                                             />
@@ -3873,7 +5107,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             <input
                                                                                 type="color"
                                                                                 value={normalizeHex(link.color || currentColors.primaryText || '#ffffff')}
-                                                                                onFocus={() => highlightElementInIframe('link', link.index)}
+                                                                                onFocus={() => handleSidebarSelect('link', link.index)}
                                                                                 onChange={(e) => handleUpdateLink(link.index, { color: e.target.value })}
                                                                                 className="w-6 h-6 rounded border-0 bg-transparent cursor-pointer"
                                                                             />
@@ -3885,6 +5119,77 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                             </button>
                                                                         </div>
                                                                     </div>
+                                                                </div>
+
+                                                                {/* Button / Link Icon */}
+                                                                <div className={`flex items-center justify-between pt-1 border-t border-zinc-800/80 transition-colors ${
+                                                                    isHighlighted && highlightedTarget?.subField === 'icon'
+                                                                        ? 'p-1.5 rounded-lg bg-primary/20 border-primary ring-1 ring-primary'
+                                                                        : ''
+                                                                }`}>
+                                                                    <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1.5">
+                                                                        <Smile className="w-3 h-3 text-emerald-400" />
+                                                                        <span>Icon:</span>
+                                                                    </span>
+                                                                    {link.hasIcon && link.iconSvg ? (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <div
+                                                                                className="w-5 h-5 flex items-center justify-center text-primary bg-zinc-900 border border-zinc-700/60 rounded cursor-pointer overflow-hidden [&>svg]:w-3.5 [&>svg]:h-3.5"
+                                                                                dangerouslySetInnerHTML={{ __html: link.iconSvg }}
+                                                                                onClick={() => setIconPickerTarget({
+                                                                                    type: 'link',
+                                                                                    linkIndex: link.index,
+                                                                                    currentSvg: link.iconSvg,
+                                                                                    currentPosition: link.iconPosition || 'left',
+                                                                                    label: `${link.isButton ? 'Button' : 'Link'} #${link.index + 1} Icon`,
+                                                                                    allowPosition: true,
+                                                                                })}
+                                                                                title="Click to change icon"
+                                                                            />
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setIconPickerTarget({
+                                                                                    type: 'link',
+                                                                                    linkIndex: link.index,
+                                                                                    currentSvg: link.iconSvg,
+                                                                                    currentPosition: link.iconPosition || 'left',
+                                                                                    label: `${link.isButton ? 'Button' : 'Link'} #${link.index + 1} Icon`,
+                                                                                    allowPosition: true,
+                                                                                })}
+                                                                                className="text-[10px] text-primary hover:underline cursor-pointer"
+                                                                            >
+                                                                                Change ({link.iconPosition || 'left'})
+                                                                            </button>
+                                                                            <span className="text-zinc-600">·</span>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleRemoveIcon({
+                                                                                    type: 'link',
+                                                                                    linkIndex: link.index,
+                                                                                    label: `${link.isButton ? 'Button' : 'Link'} #${link.index + 1} Icon`,
+                                                                                })}
+                                                                                className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
+                                                                            >
+                                                                                Remove
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setIconPickerTarget({
+                                                                                type: 'link',
+                                                                                linkIndex: link.index,
+                                                                                currentSvg: '',
+                                                                                currentPosition: 'right',
+                                                                                label: `${link.isButton ? 'Button' : 'Link'} #${link.index + 1} Icon`,
+                                                                                allowPosition: true,
+                                                                            })}
+                                                                            className="text-[10px] text-zinc-400 hover:text-primary flex items-center gap-1 py-0.5 px-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 cursor-pointer transition-colors"
+                                                                        >
+                                                                            <Plus className="w-2.5 h-2.5" />
+                                                                            <span>Add Icon</span>
+                                                                        </button>
+                                                                    )}
                                                                 </div>
 
                                                                 <label className="flex items-center gap-2 text-[11px] text-zinc-400 cursor-pointer pt-0.5">
@@ -3926,7 +5231,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                             <div
                                                                 key={`${selectedSectionId}-image-${img.index}`}
                                                                 id={`editor-control-image-${img.index}`}
-                                                                onClick={() => highlightElementInIframe('image', img.index)}
+                                                                onClick={() => handleSidebarSelect('image', img.index)}
                                                                 className={`space-y-3 p-3 rounded-lg transition-all duration-300 ${
                                                                     isHighlighted
                                                                         ? 'bg-primary/10 border-2 border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
@@ -3967,7 +5272,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     <input
                                                                         type="text"
                                                                         defaultValue={img.src}
-                                                                        onFocus={() => highlightElementInIframe('image', img.index)}
+                                                                        onFocus={() => handleSidebarSelect('image', img.index)}
                                                                         onBlur={(e) => handleUpdateImage(img.index, { src: e.target.value })}
                                                                         placeholder="https://..."
                                                                         className="w-full bg-zinc-900 border border-zinc-700/80 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary font-mono text-[11px]"
@@ -3979,7 +5284,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                     <input
                                                                         type="text"
                                                                         defaultValue={img.alt}
-                                                                        onFocus={() => highlightElementInIframe('image', img.index)}
+                                                                        onFocus={() => handleSidebarSelect('image', img.index)}
                                                                         onBlur={(e) => handleUpdateImage(img.index, { alt: e.target.value })}
                                                                         placeholder="Description..."
                                                                         className="w-full bg-zinc-900 border border-zinc-700/80 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-primary"
@@ -3998,7 +5303,7 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                                                                                 key={i}
                                                                                 onClick={() => {
                                                                                     handleUpdateImage(img.index, { src: stock.url, alt: stock.label });
-                                                                                    highlightElementInIframe('image', img.index);
+                                                                                    handleSidebarSelect('image', img.index);
                                                                                 }}
                                                                                 className="relative h-12 rounded overflow-hidden border border-zinc-700 hover:border-primary transition-all group cursor-pointer"
                                                                                 title={stock.label}
@@ -4242,6 +5547,76 @@ const getStandaloneTextElements = (sectionEl: HTMLElement, cards: HTMLElement[])
                     </div>
                 </aside>
             </div>
+
+            {/* MOBILE QUICK BOTTOM NAVIGATION (< md screens) */}
+            <nav className="md:hidden h-14 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur px-2 flex items-center justify-around shrink-0 z-20">
+                <button
+                    onClick={() => {
+                        setIsLeftSidebarOpen(prev => !prev);
+                        setIsRightSidebarOpen(false);
+                    }}
+                    className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${
+                        isLeftSidebarOpen ? 'text-primary bg-primary/10 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    <Layers className="w-4 h-4 mb-0.5" />
+                    <span>Layers ({layers.length})</span>
+                </button>
+                <button
+                    onClick={() => {
+                        setIsLeftSidebarOpen(false);
+                        setIsRightSidebarOpen(false);
+                    }}
+                    className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${
+                        !isLeftSidebarOpen && !isRightSidebarOpen ? 'text-primary bg-primary/10 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    <Eye className="w-4 h-4 mb-0.5" />
+                    <span>Preview</span>
+                </button>
+                <button
+                    onClick={() => {
+                        setIsRightSidebarOpen(true);
+                        setIsLeftSidebarOpen(false);
+                        setActiveTab('properties');
+                    }}
+                    className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${
+                        isRightSidebarOpen && activeTab === 'properties' ? 'text-primary bg-primary/10 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    <Sliders className="w-4 h-4 mb-0.5" />
+                    <span>Inspector</span>
+                </button>
+                <button
+                    onClick={() => {
+                        setIsRightSidebarOpen(true);
+                        setIsLeftSidebarOpen(false);
+                        setActiveTab('design');
+                    }}
+                    className={`flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${
+                        isRightSidebarOpen && activeTab === 'design' ? 'text-primary bg-primary/10 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    <Palette className="w-4 h-4 mb-0.5" />
+                    <span>Themes</span>
+                </button>
+            </nav>
+
+            {/* Icon Picker Modal */}
+            <IconPickerModal
+                isOpen={!!iconPickerTarget}
+                onClose={() => setIconPickerTarget(null)}
+                onSelectIcon={handleApplyIcon}
+                onRemoveIcon={handleRemoveIcon}
+                currentSvg={iconPickerTarget?.currentSvg}
+                title={iconPickerTarget ? `Choose ${iconPickerTarget.label}` : 'Choose an Icon'}
+                description="Select from 100+ curated icons or paste custom SVG code"
+                allowPosition={iconPickerTarget?.allowPosition}
+                initialPosition={iconPickerTarget?.currentPosition || 'left'}
+                allowContainerStyle={iconPickerTarget?.allowContainerStyle}
+                initialContainerStyle={iconPickerTarget?.currentContainerStyle || 'badge-soft'}
+                themeColors={currentColors}
+            />
         </div>
     );
 }

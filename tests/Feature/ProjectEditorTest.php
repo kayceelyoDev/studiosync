@@ -159,3 +159,64 @@ test('updating project validates html_content presence', function () {
     $response->assertUnprocessable();
     $response->assertJsonValidationErrors(['html_content']);
 });
+
+test('guest cannot update a project and is redirected to login', function () {
+    $user = User::factory()->create();
+
+    $workspace = Workspace::create([
+        'user_id' => $user->id,
+        'name' => 'Studio Workspace',
+        'slug' => Str::slug('Studio Workspace'),
+    ]);
+
+    $project = Project::create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $user->id,
+        'project_name' => 'Original Name',
+        'preferences' => [],
+        'html_content' => '<section id="hero"><h1>Old Title</h1></section>',
+        'status' => 'completed',
+    ]);
+
+    $response = $this->put(route('projects.update', $project->id), [
+        'html_content' => '<section id="hero"><h1>Guest Attempt</h1></section>',
+    ]);
+
+    $response->assertRedirect(route('login'));
+
+    $project->refresh();
+    expect($project->html_content)->toBe('<section id="hero"><h1>Old Title</h1></section>');
+});
+
+test('project model updateHtmlContent method updates html and optionally name', function () {
+    $user = User::factory()->create();
+
+    $workspace = Workspace::create([
+        'user_id' => $user->id,
+        'name' => 'Studio Workspace',
+        'slug' => Str::slug('Studio Workspace'),
+    ]);
+
+    $project = Project::create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $user->id,
+        'project_name' => 'Initial Title',
+        'preferences' => [],
+        'html_content' => '<div>Old</div>',
+        'status' => 'completed',
+    ]);
+
+    $result = $project->updateHtmlContent('<div>New Content</div>', 'Updated Title');
+
+    expect($result)->toBeTrue();
+    $project->refresh();
+    expect($project->html_content)->toBe('<div>New Content</div>');
+    expect($project->project_name)->toBe('Updated Title');
+
+    // Test updating html without changing name
+    $result2 = $project->updateHtmlContent('<div>Even Newer Content</div>');
+    expect($result2)->toBeTrue();
+    $project->refresh();
+    expect($project->html_content)->toBe('<div>Even Newer Content</div>');
+    expect($project->project_name)->toBe('Updated Title');
+});
