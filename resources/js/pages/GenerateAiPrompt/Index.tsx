@@ -1,20 +1,109 @@
 import React, { useState } from 'react';
 import { Head, usePage, router } from '@inertiajs/react';
 import { toast } from 'sonner';
-import { CheckCircle2, ChevronRight, ChevronLeft, Sparkles, Check, Loader2, FolderOpen, FolderPlus, FilePlus, Trash2, User, Plus, LayoutTemplate, Palette, Edit3, ExternalLink } from 'lucide-react';
+import { CheckCircle2, ChevronRight, ChevronLeft, Sparkles, Check, Loader2, FolderOpen, FolderPlus, FilePlus, Trash2, User, Plus, LayoutTemplate, Palette, Edit3, ExternalLink, UploadCloud, Image as ImageIcon, AlertCircle, Info } from 'lucide-react';
 
-interface Asset {
+interface UploadedSectionAsset {
     id: string;
-    name: string;
+    section: string;
+    file: File;
+    previewUrl: string;
+    purpose: string;
+    customPurpose: string;
     description: string;
-    type: string;
 }
 
-interface Folder {
-    id: string;
-    name: string;
-    assets: Asset[];
+interface SectionGuide {
+    title: string;
+    description: string;
+    recommendedPurposes: { label: string; hint: string }[];
 }
+
+const SECTION_ASSET_GUIDES: Record<string, SectionGuide> = {
+    'Brand & Navigation (Logo)': {
+        title: 'Brand & Navigation (Logo / Icon)',
+        description: 'Upload your primary logo, site icon, or brand mark for the navigation bar and footer.',
+        recommendedPurposes: [
+            { label: 'Primary Logo (Color / Standard)', hint: 'Used on the main navigation bar' },
+            { label: 'White / Inverse Logo', hint: 'Used on dark navigation bars or dark mode' },
+            { label: 'Favicon / Icon Mark', hint: 'Used for compact mobile header or badge' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Hero Section': {
+        title: 'Hero Section',
+        description: 'Upload high-impact imagery for the top banner, split hero panel, or showcase.',
+        recommendedPurposes: [
+            { label: 'Hero Banner / Background', hint: 'Cinematic or wide background visual' },
+            { label: 'Featured Subject / Product', hint: 'Main subject or hero focal photo' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'About Me': {
+        title: 'About Me / Profile',
+        description: 'Upload personal portraits, founder headshots, or workspace/studio pictures.',
+        recommendedPurposes: [
+            { label: 'Founder / Profile Headshot', hint: 'Portrait of founder, creator, or professional' },
+            { label: 'Studio / Workspace Picture', hint: 'Photo of your studio, workspace, or behind-the-scenes' },
+            { label: 'Signature / Badge', hint: 'Handwritten signature or certification stamp' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Portfolio Gallery': {
+        title: 'Portfolio Gallery',
+        description: 'Upload sample works, case studies, or photography pieces.',
+        recommendedPurposes: [
+            { label: 'Project / Portfolio Item', hint: 'Main sample work or case study visual' },
+            { label: 'Gallery Photography', hint: 'Photo series or artistic artwork' },
+            { label: 'Process / Before & After', hint: 'Visual showing your method or result' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Services': {
+        title: 'Services',
+        description: 'Upload imagery or icons for each service package you offer.',
+        recommendedPurposes: [
+            { label: 'Service Feature Image', hint: 'Card visual for a specific service' },
+            { label: 'Service Icon / Illustration', hint: 'Graphic or icon representing an offering' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Testimonials': {
+        title: 'Testimonials',
+        description: 'Upload customer or client portraits for social proof.',
+        recommendedPurposes: [
+            { label: 'Client Avatar / Headshot', hint: 'Portrait of reviewer or testimonial author' },
+            { label: 'Client Company Logo', hint: 'Logo of company that gave praise' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Pricing': {
+        title: 'Pricing',
+        description: 'Upload plan badge or pricing tier highlight graphics.',
+        recommendedPurposes: [
+            { label: 'Tier Badge / Highlight Graphic', hint: 'Visual banner or badge for popular tier' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Contact Form': {
+        title: 'Contact Form',
+        description: 'Upload office photo, studio building, or friendly banner.',
+        recommendedPurposes: [
+            { label: 'Office / Studio Location', hint: 'Exterior or interior photo of your base' },
+            { label: 'Contact Visual Banner', hint: 'Friendly portrait or visual beside the form' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+    'Blog/News': {
+        title: 'Blog / News',
+        description: 'Upload featured article thumbnails or author photos.',
+        recommendedPurposes: [
+            { label: 'Article Featured Thumbnail', hint: 'Cover image for blog post' },
+            { label: 'Author Avatar', hint: 'Writer or contributor headshot' },
+            { label: 'Other', hint: 'Specify your own purpose' },
+        ]
+    },
+};
 
 const LayoutWireframe = ({ layout }: { layout: string }) => {
     switch (layout) {
@@ -206,7 +295,7 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
     });
 
     // Form State (Assets)
-    const [folders, setFolders] = useState<Folder[]>([]);
+    const [uploadedAssets, setUploadedAssets] = useState<UploadedSectionAsset[]>([]);
 
     const handleInputChange = (field: string, value: any) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -279,57 +368,67 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
         });
     };
 
-    // Asset Folders Management
-    const addFolder = () => {
-        setFolders(prev => [
-            ...prev,
-            { id: Date.now().toString(), name: 'New Folder', assets: [] }
-        ]);
-    };
+    // Asset Management
+    const handleFilesSelected = (section: string, files: FileList | null) => {
+        if (!files || files.length === 0) return;
 
-    const updateFolder = (id: string, name: string) => {
-        setFolders(prev => prev.map(f => f.id === id ? { ...f, name } : f));
-    };
+        const maxSizeBytes = 10 * 1024 * 1024; // 10MB per file
+        const maxTotalBytes = 40 * 1024 * 1024; // 40MB max total across all uploads
+        const newAssets: UploadedSectionAsset[] = [];
+        const guide = SECTION_ASSET_GUIDES[section];
+        const defaultPurpose = guide?.recommendedPurposes[0]?.label || 'Image';
 
-    const removeFolder = (id: string) => {
-        setFolders(prev => prev.filter(f => f.id !== id));
-    };
+        const currentTotalBytes = uploadedAssets.reduce((sum, a) => sum + a.file.size, 0);
+        let accumulatedBytes = 0;
 
-    const addAsset = (folderId: string) => {
-        setFolders(prev => prev.map(f => {
-            if (f.id === folderId) {
-                return {
-                    ...f,
-                    assets: [...f.assets, { id: Date.now().toString(), name: '', description: '', type: 'image' }]
-                };
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+
+            if (file.size > maxSizeBytes) {
+                toast.error(`"${file.name}" exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB). Please choose an image under 10MB.`);
+                continue;
             }
-            return f;
-        }));
+
+            if (currentTotalBytes + accumulatedBytes + file.size > maxTotalBytes) {
+                toast.error(`Cannot add "${file.name}": Total uploads across all sections would exceed 40MB.`);
+                continue;
+            }
+
+            accumulatedBytes += file.size;
+
+            const previewUrl = URL.createObjectURL(file);
+            newAssets.push({
+                id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                section,
+                file,
+                previewUrl,
+                purpose: defaultPurpose,
+                customPurpose: '',
+                description: ''
+            });
+        }
+
+        if (newAssets.length > 0) {
+            setUploadedAssets(prev => [...prev, ...newAssets]);
+            toast.success(`Added ${newAssets.length} image${newAssets.length > 1 ? 's' : ''} to ${section}`);
+        }
     };
 
-    const updateAsset = (folderId: string, assetId: string, field: keyof Asset, value: string) => {
-        setFolders(prev => prev.map(f => {
-            if (f.id === folderId) {
-                return {
-                    ...f,
-                    assets: f.assets.map(a => a.id === assetId ? { ...a, [field]: value } : a)
-                };
-            }
-            return f;
-        }));
+    const updateAssetField = (id: string, field: 'purpose' | 'customPurpose' | 'description', value: string) => {
+        setUploadedAssets(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
     };
 
-    const removeAsset = (folderId: string, assetId: string) => {
-        setFolders(prev => prev.map(f => {
-            if (f.id === folderId) {
-                return { ...f, assets: f.assets.filter(a => a.id !== assetId) };
+    const removeUploadedAsset = (id: string) => {
+        setUploadedAssets(prev => {
+            const item = prev.find(a => a.id === id);
+            if (item?.previewUrl) {
+                URL.revokeObjectURL(item.previewUrl);
             }
-            return f;
-        }));
+            return prev.filter(a => a.id !== id);
+        });
     };
 
     const skipAssets = () => {
-        setFolders([]);
         setCurrentStep(6);
     };
 
@@ -351,25 +450,54 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
             `Additional Details: ${formData.extra_details}`
         ].filter(p => p.trim() !== '');
 
-        const payload = {
-            workspace_id: workspace_id,
-            project_name: formData.project_name || 'Untitled Project',
-            preferences: compiledPreferences
-            // assets data can be sent here if backend supported it, omitted as per instructions
-        };
+        const formDataPayload = new FormData();
+        if (workspace_id) {
+            formDataPayload.append('workspace_id', String(workspace_id));
+        }
+        formDataPayload.append('project_name', formData.project_name || 'Untitled Project');
+
+        compiledPreferences.forEach((pref, index) => {
+            formDataPayload.append(`preferences[${index}]`, pref);
+        });
+
+        uploadedAssets.forEach((asset, index) => {
+            formDataPayload.append(`assets[${index}][file]`, asset.file);
+            formDataPayload.append(`assets[${index}][section]`, asset.section);
+            formDataPayload.append(`assets[${index}][purpose]`, asset.purpose);
+            if (asset.customPurpose) {
+                formDataPayload.append(`assets[${index}][custom_purpose]`, asset.customPurpose);
+            }
+            if (asset.description) {
+                formDataPayload.append(`assets[${index}][description]`, asset.description);
+            }
+        });
 
         try {
             const response = await fetch('/generate-prompt', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
                 },
-                body: JSON.stringify(payload)
+                body: formDataPayload
             });
 
-            const responseData = await response.json();
+            const contentType = response.headers.get('content-type') || '';
+            let responseData: any = null;
+
+            if (contentType.includes('application/json')) {
+                responseData = await response.json();
+            } else {
+                const rawText = await response.text();
+                console.error("Non-JSON server response:", rawText);
+                if (response.status === 413 || rawText.includes('POST Content-Length') || rawText.includes('Content Too Large')) {
+                    toast.error("The uploaded assets exceed the server payload limit. Please try fewer or smaller images.");
+                } else {
+                    toast.error(`Server error (${response.status}): Failed to generate website.`);
+                }
+                setIsSubmitting(false);
+                return;
+            }
             
             if (response.ok && responseData.success) {
                 setProjectId(responseData.project_id);
@@ -453,7 +581,7 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
         'Classic Vintage (Retro, Nostalgic)'
     ];
 
-    const totalAssets = folders.reduce((sum, f) => sum + f.assets.length, 0);
+    const totalAssets = uploadedAssets.length;
 
     return (
         <div className="flex flex-col flex-1 h-full gap-4 overflow-x-hidden rounded-xl text-foreground bg-background">
@@ -776,96 +904,186 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                             {/* STEP 5: ASSETS */}
                             {currentStep === 5 && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                         <div>
                                             <h2 className="text-2xl font-bold text-foreground">Project Assets <span className="text-muted-foreground font-normal text-lg">(Optional)</span></h2>
-                                            <p className="mt-1 text-muted-foreground">Add folders and assets (images, fonts, stylesheets) for AI context.</p>
+                                            <p className="mt-1 text-muted-foreground">Upload real images from your PC for each selected section. The AI will place them directly using your descriptions.</p>
                                         </div>
                                         <button 
+                                            type="button"
                                             onClick={skipAssets}
-                                            className="px-4 py-2 text-sm font-medium bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md transition-colors"
+                                            className="self-start sm:self-auto px-4 py-2 text-sm font-medium bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-md transition-colors"
                                         >
                                             Skip this step
                                         </button>
                                     </div>
 
-                                    <div className="space-y-6">
-                                        {folders.map((folder, index) => (
-                                            <div key={folder.id} className="border border-border bg-muted/20 rounded-xl p-5 shadow-sm">
-                                                <div className="flex items-center gap-4 mb-4">
-                                                    <div className="p-2 bg-primary/10 text-primary rounded-lg">
-                                                        <FolderOpen className="w-5 h-5" />
-                                                    </div>
-                                                    <input 
-                                                        type="text" 
-                                                        value={folder.name}
-                                                        onChange={(e) => updateFolder(folder.id, e.target.value)}
-                                                        className="flex-1 px-3 py-2 bg-background border border-input rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-medium"
-                                                        placeholder="Folder Name (e.g. Hero Images)"
-                                                    />
-                                                    <button 
-                                                        onClick={() => removeFolder(folder.id)}
-                                                        className="p-2 text-red-500 hover:bg-red-500/10 rounded-md transition-colors"
-                                                        title="Remove Folder"
-                                                    >
-                                                        <Trash2 className="w-5 h-5" />
-                                                    </button>
-                                                </div>
+                                    {/* 10MB Limit Awareness Notice */}
+                                    <div className="flex items-start gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 text-sm text-foreground">
+                                        <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                                        <div>
+                                            <span className="font-semibold text-primary">Upload guidance & limits: </span>
+                                            <span>Each image must be under <strong className="text-foreground font-bold">10MB</strong> (supports PNG, JPG, WEBP, SVG). Images will be stored securely on Cloudflare R2 and linked to your website sections.</span>
+                                        </div>
+                                    </div>
 
-                                                <div className="space-y-3 pl-11">
-                                                    {folder.assets.map(asset => (
-                                                        <div key={asset.id} className="flex flex-col sm:flex-row gap-3 bg-background border border-border p-3 rounded-lg items-start sm:items-center">
-                                                            <input 
-                                                                type="text"
-                                                                value={asset.name}
-                                                                onChange={(e) => updateAsset(folder.id, asset.id, 'name', e.target.value)}
-                                                                placeholder="Asset Name (e.g. logo.svg)"
-                                                                className="flex-1 w-full sm:w-auto px-3 py-2 bg-transparent border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                                                            />
-                                                            <input 
-                                                                type="text"
-                                                                value={asset.description}
-                                                                onChange={(e) => updateAsset(folder.id, asset.id, 'description', e.target.value)}
-                                                                placeholder="Description / Usage"
-                                                                className="flex-[1.5] w-full sm:w-auto px-3 py-2 bg-transparent border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                                                            />
-                                                            <select
-                                                                value={asset.type}
-                                                                onChange={(e) => updateAsset(folder.id, asset.id, 'type', e.target.value)}
-                                                                className="w-full sm:w-32 px-3 py-2 bg-transparent border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
-                                                            >
-                                                                <option value="image">Image</option>
-                                                                <option value="css">CSS</option>
-                                                                <option value="js">JS</option>
-                                                                <option value="font">Font</option>
-                                                                <option value="other">Other</option>
-                                                            </select>
-                                                            <button 
-                                                                onClick={() => removeAsset(folder.id, asset.id)}
-                                                                className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
+                                    {/* Sections Asset Upload Blocks */}
+                                    <div className="space-y-8">
+                                        {[
+                                            'Brand & Navigation (Logo)',
+                                            ...(formData.content_strategy.length > 0 ? formData.content_strategy : ['Hero Section', 'About Me', 'Portfolio Gallery'])
+                                        ].map((sectionName) => {
+                                            const guide = SECTION_ASSET_GUIDES[sectionName] || {
+                                                title: sectionName,
+                                                description: `Upload imagery or graphic assets for the ${sectionName}.`,
+                                                recommendedPurposes: [
+                                                    { label: 'Feature Image', hint: 'Main visual for section' },
+                                                    { label: 'Secondary Graphic', hint: 'Secondary illustration or photo' },
+                                                    { label: 'Other', hint: 'Custom purpose' }
+                                                ]
+                                            };
+                                            const sectionAssets = uploadedAssets.filter(a => a.section === sectionName);
+
+                                            return (
+                                                <div key={sectionName} className="border border-border bg-card rounded-2xl p-5 sm:p-6 shadow-sm space-y-5">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-4">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="text-lg font-bold text-foreground">{guide.title}</h3>
+                                                                <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                                                                    {sectionAssets.length} {sectionAssets.length === 1 ? 'image' : 'images'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{guide.description}</p>
                                                         </div>
-                                                    ))}
-                                                    <button
-                                                        onClick={() => addAsset(folder.id)}
-                                                        className="inline-flex items-center text-sm font-medium text-primary hover:text-primary/80 transition-colors mt-2"
-                                                    >
-                                                        <FilePlus className="w-4 h-4 mr-1.5" />
-                                                        Add Asset
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
+                                                    </div>
 
-                                        <button
-                                            onClick={addFolder}
-                                            className="w-full py-4 border-2 border-dashed border-border rounded-xl text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-muted/50 transition-all flex flex-col items-center justify-center gap-2"
-                                        >
-                                            <FolderPlus className="w-6 h-6" />
-                                            <span className="font-medium">Add Folder</span>
-                                        </button>
+                                                    {/* Dropzone */}
+                                                    <label className="cursor-pointer border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 transition-all rounded-xl p-5 sm:p-6 flex flex-col items-center justify-center text-center gap-2 group block">
+                                                        <input
+                                                            type="file"
+                                                            multiple
+                                                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                                            className="hidden"
+                                                            onChange={(e) => {
+                                                                handleFilesSelected(sectionName, e.target.files);
+                                                                e.target.value = '';
+                                                            }}
+                                                        />
+                                                        <div className="p-3 bg-primary/10 text-primary rounded-full group-hover:scale-110 transition-transform">
+                                                            <UploadCloud className="w-6 h-6" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                                                                Click to select images from your PC or drag and drop
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground mt-1">
+                                                                PNG, JPG, WEBP, SVG • <strong className="text-foreground">Max 10MB per image</strong>
+                                                            </p>
+                                                        </div>
+                                                    </label>
+
+                                                    {/* Uploaded Images List for this section */}
+                                                    {sectionAssets.length > 0 && (
+                                                        <div className="space-y-3 pt-2">
+                                                            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Attached Images ({sectionAssets.length})</h4>
+                                                            <div className="grid grid-cols-1 gap-3">
+                                                                {sectionAssets.map((asset) => (
+                                                                    <div key={asset.id} className="flex flex-col sm:flex-row gap-4 p-4 rounded-xl bg-muted/30 border border-border items-start sm:items-center">
+                                                                        <div className="relative shrink-0">
+                                                                            <img
+                                                                                src={asset.previewUrl}
+                                                                                alt={asset.file.name}
+                                                                                className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border border-border bg-background"
+                                                                            />
+                                                                            <span className="absolute bottom-1 right-1 bg-black/75 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
+                                                                                {(asset.file.size / (1024 * 1024)).toFixed(1)} MB
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="flex-1 w-full space-y-2.5">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className="text-sm font-semibold text-foreground truncate max-w-[200px] sm:max-w-md" title={asset.file.name}>
+                                                                                    {asset.file.name}
+                                                                                </span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => removeUploadedAsset(asset.id)}
+                                                                                    className="text-muted-foreground hover:text-red-500 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
+                                                                                    title="Remove image"
+                                                                                >
+                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                </button>
+                                                                            </div>
+
+                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                                <div>
+                                                                                    <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                                                                        What is this image for?
+                                                                                    </label>
+                                                                                    <select
+                                                                                        value={asset.purpose}
+                                                                                        onChange={(e) => updateAssetField(asset.id, 'purpose', e.target.value)}
+                                                                                        className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs sm:text-sm text-foreground focus:ring-1 focus:ring-ring"
+                                                                                    >
+                                                                                        {guide.recommendedPurposes.map(p => (
+                                                                                            <option key={p.label} value={p.label}>{p.label}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                </div>
+
+                                                                                {asset.purpose === 'Other' ? (
+                                                                                    <div>
+                                                                                        <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                                                                            Specify what it's for:
+                                                                                        </label>
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            value={asset.customPurpose}
+                                                                                            onChange={(e) => updateAssetField(asset.id, 'customPurpose', e.target.value)}
+                                                                                            placeholder="e.g. Award badge, signature, office exterior"
+                                                                                            className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs sm:text-sm text-foreground focus:ring-1 focus:ring-ring"
+                                                                                        />
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div>
+                                                                                        <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                                                                            Additional AI Context (Optional):
+                                                                                        </label>
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            value={asset.description}
+                                                                                            onChange={(e) => updateAssetField(asset.id, 'description', e.target.value)}
+                                                                                            placeholder="e.g. Founder portrait in studio setting"
+                                                                                            className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs sm:text-sm text-foreground focus:ring-1 focus:ring-ring"
+                                                                                        />
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+
+                                                                            {asset.purpose === 'Other' && (
+                                                                                <div>
+                                                                                    <label className="text-xs font-medium text-muted-foreground block mb-1">
+                                                                                        Additional AI Context (Optional):
+                                                                                    </label>
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={asset.description}
+                                                                                        onChange={(e) => updateAssetField(asset.id, 'description', e.target.value)}
+                                                                                        placeholder="e.g. Placement instructions or specific details"
+                                                                                        className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs sm:text-sm text-foreground focus:ring-1 focus:ring-ring"
+                                                                                    />
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -926,15 +1144,24 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                                                 </h3>
                                                 <div className="flex items-center gap-4 justify-center py-4">
                                                     <div className="text-center">
-                                                        <p className="text-3xl font-bold text-foreground">{folders.length}</p>
-                                                        <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Folders</p>
-                                                    </div>
-                                                    <div className="h-10 w-px bg-border"></div>
-                                                    <div className="text-center">
-                                                        <p className="text-3xl font-bold text-foreground">{totalAssets}</p>
-                                                        <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Assets</p>
+                                                        <p className="text-3xl font-bold text-foreground">{uploadedAssets.length}</p>
+                                                        <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Uploaded Images</p>
                                                     </div>
                                                 </div>
+
+                                                {uploadedAssets.length > 0 && (
+                                                    <div className="mt-4 pt-4 border-t border-border space-y-2">
+                                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Breakdown</p>
+                                                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                                            {uploadedAssets.map(asset => (
+                                                                <div key={asset.id} className="flex items-center justify-between text-xs py-1 border-b border-border/40">
+                                                                    <span className="truncate max-w-[140px] font-medium text-foreground">{asset.file.name}</span>
+                                                                    <span className="text-muted-foreground bg-muted px-2 py-0.5 rounded text-[11px] shrink-0">{asset.section}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -1028,7 +1255,7 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                                             contact_address: '', social_links: [], about_bio: '',
                                             extra_details: ''
                                         });
-                                        setFolders([]);
+                                        setUploadedAssets([]);
                                     }}
                                     className="px-3.5 py-2 text-sm font-medium transition-colors bg-transparent border rounded-md shadow-sm border-input text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                 >

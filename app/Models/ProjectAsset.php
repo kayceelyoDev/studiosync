@@ -28,10 +28,23 @@ class ProjectAsset extends Model
     ];
 
     /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array<int, string>
+     */
+    protected $appends = [
+        'url',
+    ];
+
+    /**
      * Get the resolved URL for the asset from its configured disk.
      */
     public function getUrlAttribute(): string
     {
+        if (empty($this->path)) {
+            return '';
+        }
+
         return Storage::disk($this->disk ?? 'r2')->url($this->path);
     }
 

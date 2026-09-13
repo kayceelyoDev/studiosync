@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminWorkspaceController;
 use App\Http\Controllers\GenerateAiPromtPage;
+use App\Http\Controllers\ProjectAssetController;
 use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/projects/{project}', [GenerateAiPromtPage::class, 'show'])->name('projects.show');
     Route::get('/projects/{project}/edit', [GenerateAiPromtPage::class, 'edit'])->name('projects.edit');
     Route::put('/projects/{project}', [GenerateAiPromtPage::class, 'update'])->name('projects.update');
+    Route::get('/projects/{project}/assets', [ProjectAssetController::class, 'index'])->name('projects.assets.index');
+    Route::post('/projects/{project}/assets', [ProjectAssetController::class, 'store'])->name('projects.assets.store');
+    Route::post('/projects/{project}/assets/{asset}/replace', [ProjectAssetController::class, 'replace'])->name('projects.assets.replace');
+    Route::patch('/projects/{project}/assets/{asset}', [ProjectAssetController::class, 'update'])->name('projects.assets.update');
+    Route::delete('/projects/{project}/assets/{asset}', [ProjectAssetController::class, 'destroy'])->name('projects.assets.destroy');
 });
 
 /*
