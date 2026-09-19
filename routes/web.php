@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\AdminWorkspaceController;
+use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\GenerateAiPromtPage;
 use App\Http\Controllers\ProjectAssetController;
+use App\Http\Controllers\VercelWebhookController;
 use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
 
@@ -30,7 +32,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/projects/{project}/assets/{asset}/replace', [ProjectAssetController::class, 'replace'])->name('projects.assets.replace');
     Route::patch('/projects/{project}/assets/{asset}', [ProjectAssetController::class, 'update'])->name('projects.assets.update');
     Route::delete('/projects/{project}/assets/{asset}', [ProjectAssetController::class, 'destroy'])->name('projects.assets.destroy');
+    Route::post('/projects/{project}/deploy', [DeploymentController::class, 'deploy'])
+        ->middleware('throttle:5,1')
+        ->name('projects.deploy');
+    Route::get('/projects/{project}/deployment-status', [DeploymentController::class, 'status'])->name('projects.deployment-status');
+    Route::get('/projects/{project}/deployments', [DeploymentController::class, 'index'])->name('projects.deployments');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Webhook Routes (unauthenticated, signature-verified)
+|--------------------------------------------------------------------------
+*/
+Route::post('/api/webhooks/vercel', [VercelWebhookController::class, 'handle'])->name('webhooks.vercel');
 
 /*
 |--------------------------------------------------------------------------

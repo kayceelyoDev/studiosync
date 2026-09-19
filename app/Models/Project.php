@@ -20,12 +20,18 @@ class Project extends Model
         'html_content',
         'status',
         'project_url',
+        'vercel_project_id',
+        'vercel_project_name',
+        'deployment_status',
+        'deployed_at',
+        'content_hash',
     ];
 
     protected function casts(): array
     {
         return [
             'preferences' => 'array',
+            'deployed_at' => 'datetime',
         ];
     }
 
@@ -52,6 +58,26 @@ class Project extends Model
     public function projectAssets(): HasMany
     {
         return $this->hasMany(ProjectAsset::class);
+    }
+
+    public function deployments(): HasMany
+    {
+        return $this->hasMany(Deployment::class);
+    }
+
+    public function isDeployed(): bool
+    {
+        return $this->deployment_status === 'deployed' || $this->status === 'deployed';
+    }
+
+    public function isDeploying(): bool
+    {
+        return $this->deployment_status === 'deploying';
+    }
+
+    public function isEditable(): bool
+    {
+        return ! $this->isDeployed() && ! $this->isDeploying();
     }
 
     /**

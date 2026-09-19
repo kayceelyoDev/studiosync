@@ -13,6 +13,7 @@ import {
     Code2,
     ExternalLink,
     Save,
+    Rocket,
     Check,
     Loader2,
     Sparkles,
@@ -87,6 +88,9 @@ interface Project {
     status: string;
     html_content: string;
     project_url?: string | null;
+    vercel_project_name?: string | null;
+    deployment_status?: string | null;
+    deployed_at?: string | null;
     preferences?: any;
     created_at: string;
     workspace?: {
@@ -445,6 +449,105 @@ export default function ProjectEdit({
     const [isDirty, setIsDirty] = useState<boolean>(false);
     const [projectName, setProjectName] = useState<string>(project.project_name || 'Untitled Project');
     const [isRenaming, setIsRenaming] = useState<boolean>(false);
+
+    // Deployment state (Vercel)
+    const [deploymentStatus, setDeploymentStatus] = useState<string>(
+        project.deployment_status || (project.project_url ? 'deployed' : 'not_deployed')
+    );
+    const [projectUrl, setProjectUrl] = useState<string>(project.project_url || '');
+    const [isDeployModalOpen, setIsDeployModalOpen] = useState<boolean>(false);
+    const [isDeploying, setIsDeploying] = useState<boolean>(false);
+    const [deployError, setDeployError] = useState<string | null>(null);
+
+    const initialSubdomain = useMemo(() => {
+        if (project.vercel_project_name) return project.vercel_project_name;
+        const slug = (project.project_name || 'site')
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+        return slug || 'site';
+    }, [project.vercel_project_name, project.project_name]);
+
+    const [subdomain, setSubdomain] = useState<string>(initialSubdomain);
+
+    const isLocked = deploymentStatus === 'deployed';
+
+    // Poll deployment status when in 'deploying' state
+    useEffect(() => {
+        if (deploymentStatus !== 'deploying') return;
+
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`/projects/${project.id}/deployment-status`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.deployment_status === 'deployed') {
+                    setDeploymentStatus('deployed');
+                    if (data.project_url) setProjectUrl(data.project_url);
+                    toast.success('Your website has been deployed and is now live on Vercel!');
+                } else if (data.deployment_status === 'failed') {
+                    setDeploymentStatus('failed');
+                    const err = data.latest_deployment?.error_message || 'Deployment to Vercel failed.';
+                    setDeployError(err);
+                    toast.error(err);
+                }
+            } catch (err) {
+                console.error('Failed to poll deployment status:', err);
+            }
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [deploymentStatus, project.id]);
+
+    const handleDeploy = async () => {
+        const cleanSubdomain = subdomain.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-|-$/g, '');
+        if (cleanSubdomain.length < 3) {
+            setDeployError('Subdomain must be at least 3 characters long.');
+            return;
+        }
+        if (cleanSubdomain.length > 50) {
+            setDeployError('Subdomain cannot exceed 50 characters.');
+            return;
+        }
+
+        setIsDeploying(true);
+        setDeployError(null);
+
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                || (document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ? decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)![1]) : '');
+
+            const res = await fetch(`/projects/${project.id}/deploy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({ subdomain: cleanSubdomain }),
+            });
+
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                setDeploymentStatus('deploying');
+                setIsDeployModalOpen(false);
+                toast.info('Publishing to Vercel initiated. Your site will be live in seconds!');
+            } else {
+                const msg = data.message || (res.status === 423 ? 'Project is already deployed.' : 'Failed to initiate deployment.');
+                setDeployError(msg);
+                toast.error(msg);
+            }
+        } catch (err) {
+            console.error('Failed to dispatch deploy:', err);
+            setDeployError('A network error occurred while triggering deployment.');
+            toast.error('Network error during deployment.');
+        } finally {
+            setIsDeploying(false);
+        }
+    };
 
     // Asset Management State (Cloudflare R2)
     const resolveAssetUrl = useCallback((asset: { url?: string; path?: string } | null | undefined): string => {
@@ -4496,19 +4599,88 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                         <span className="hidden sm:inline">Preview</span>
                     </button>
 
-                    <button
-                        onClick={saveChanges}
-                        disabled={isSaving}
-                        className="px-2.5 sm:px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-950/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                        {isSaving ? (
-                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline"> Saving...</span></>
-                        ) : (
-                            <><Save className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Publish</span></>
-                        )}
-                    </button>
+                    {!isLocked && (
+                        <button
+                            onClick={saveChanges}
+                            disabled={isSaving}
+                            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold text-zinc-200 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            title="Save draft edits"
+                        >
+                            {isSaving ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline"> Saving...</span></>
+                            ) : (
+                                <><Save className="w-3.5 h-3.5" /><span className="hidden sm:inline"> Save Draft</span></>
+                            )}
+                        </button>
+                    )}
+
+                    {deploymentStatus === 'deployed' ? (
+                        <a
+                            href={projectUrl || project.project_url || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-950/50 transition-all flex items-center gap-1.5 cursor-pointer"
+                            title="Open live website on Vercel"
+                        >
+                            <Rocket className="w-3.5 h-3.5 text-emerald-200" />
+                            <span className="hidden sm:inline">Live on Vercel</span>
+                            <ExternalLink className="w-3 h-3 opacity-70" />
+                        </a>
+                    ) : deploymentStatus === 'deploying' ? (
+                        <button
+                            disabled
+                            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600/70 shadow-sm transition-all flex items-center gap-1.5 cursor-not-allowed"
+                        >
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                            <span>Deploying...</span>
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => {
+                                setDeployError(null);
+                                setIsDeployModalOpen(true);
+                            }}
+                            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm shadow-indigo-950/50 transition-all flex items-center gap-1.5 cursor-pointer"
+                            title="Deploy your website live to Vercel"
+                        >
+                            <Rocket className="w-3.5 h-3.5" />
+                            <span>Deploy Website</span>
+                        </button>
+                    )}
                 </div>
             </header>
+
+            {/* DEPLOYED LOCK BANNER */}
+            {deploymentStatus === 'deployed' && (
+                <div className="bg-emerald-950/90 border-b border-emerald-800/80 px-4 py-2 flex items-center justify-between text-xs text-emerald-100 shrink-0 z-20">
+                    <div className="flex items-center gap-2">
+                        <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span className="font-medium">
+                            <strong>Website Live on Vercel:</strong>{' '}
+                            <a
+                                href={projectUrl || project.project_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline font-semibold text-emerald-300 hover:text-white"
+                            >
+                                {projectUrl || project.project_url}
+                            </a>
+                            {' '}— This website has been published and is permanently locked from further editing.
+                        </span>
+                    </div>
+                    <a
+                        href={projectUrl || project.project_url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-medium flex items-center gap-1 text-[11px] transition-colors"
+                    >
+                        Visit Site <ExternalLink className="w-3 h-3" />
+                    </a>
+                </div>
+            )}
 
             {/* MAIN WORKSPACE AREA (3 COLUMNS / RESPONSIVE DRAWERS) */}
             <div className="flex-1 flex overflow-hidden relative">
@@ -7707,6 +7879,119 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     }
                 }}
             />
+
+            {/* SUBDOMAIN & VERCEL DEPLOYMENT MODAL */}
+            {isDeployModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-6 shadow-2xl relative text-zinc-100 animate-in zoom-in-95 duration-200">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!isDeploying) {
+                                    setIsDeployModalOpen(false);
+                                    setDeployError(null);
+                                }
+                            }}
+                            className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-200 p-1 rounded-md transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                                <Rocket className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-zinc-100">Deploy Website to Vercel</h3>
+                                <p className="text-xs text-zinc-400">Publish your site live on Vercel's Edge Network</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 text-sm">
+                            <div>
+                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 uppercase tracking-wider">
+                                    Choose Website Subdomain
+                                </label>
+                                <div className="flex items-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all">
+                                    <span className="text-zinc-500 mr-1 select-none font-mono text-xs">https://</span>
+                                    <input
+                                        type="text"
+                                        value={subdomain}
+                                        onChange={(e) => {
+                                            const clean = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                                            setSubdomain(clean);
+                                            setDeployError(null);
+                                        }}
+                                        placeholder="my-cool-site"
+                                        disabled={isDeploying}
+                                        className="bg-transparent border-none p-0 focus:outline-none flex-1 text-zinc-100 font-mono text-sm"
+                                    />
+                                    <span className="text-zinc-500 select-none font-semibold text-xs ml-1">.vercel.app</span>
+                                </div>
+                                <p className="text-[11px] text-zinc-500 mt-1">
+                                    Lowercase alphanumeric characters and hyphens only (3-50 chars).
+                                </p>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 text-xs text-zinc-400 flex items-center justify-between">
+                                <span>Preview URL:</span>
+                                <span className="font-mono text-indigo-300 font-medium truncate max-w-[220px]">
+                                    https://{subdomain || 'your-site'}.vercel.app
+                                </span>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/40 text-xs text-amber-200/90 flex items-start gap-2.5">
+                                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <strong className="text-amber-300 block mb-0.5">Permanent Lock Notice:</strong>
+                                    Once published to Vercel, this website is live on the internet and <strong>will be permanently locked from further editing</strong>. Make sure you are satisfied with all changes before proceeding.
+                                </div>
+                            </div>
+
+                            {deployError && (
+                                <div className="p-3 rounded-xl bg-red-950/50 border border-red-800/60 text-xs text-red-200 flex items-start gap-2">
+                                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                    <span>{deployError}</span>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-end gap-2.5 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!isDeploying) {
+                                            setIsDeployModalOpen(false);
+                                            setDeployError(null);
+                                        }
+                                    }}
+                                    disabled={isDeploying}
+                                    className="px-4 py-2 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDeploy}
+                                    disabled={isDeploying || !subdomain.trim()}
+                                    className="px-5 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-md shadow-indigo-950/50 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                >
+                                    {isDeploying ? (
+                                        <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            <span>Deploying...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Rocket className="w-3.5 h-3.5" />
+                                            <span>Confirm & Deploy</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

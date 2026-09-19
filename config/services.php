@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'vercel' => [
+        'token' => env('VERCEL_API_TOKEN'),
+        'team_id' => env('VERCEL_TEAM_ID'),
+        'webhook_secret' => env('VERCEL_WEBHOOK_SECRET'),
+        'base_url' => env('VERCEL_BASE_URL', 'https://api.vercel.com'),
+    ],
+
 ];

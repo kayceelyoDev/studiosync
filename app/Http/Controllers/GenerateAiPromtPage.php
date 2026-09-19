@@ -53,7 +53,7 @@ class GenerateAiPromtPage extends Controller
             return redirect()->route('admin.projects.index');
         }
 
-        $data = Project::select('id', 'workspace_id', 'project_name', 'status', 'project_url', 'created_at')
+        $data = Project::select('id', 'workspace_id', 'project_name', 'status', 'project_url', 'deployment_status', 'vercel_project_name', 'created_at')
             ->where('user_id', Auth::user()->id)
             ->get();
 
@@ -67,6 +67,12 @@ class GenerateAiPromtPage extends Controller
         if ($project->user_id !== auth()->id()) {
             abort(403);
         }
+
+        $project->load([
+            'workspace:id,name,slug',
+            'projectAssets',
+            'deployments' => fn ($query) => $query->latest()->limit(10),
+        ]);
 
         return Inertia::render('Project/Show', [
             'project' => $project,
@@ -184,6 +190,18 @@ class GenerateAiPromtPage extends Controller
     {
         if ($project->user_id !== auth()->id()) {
             abort(403);
+        }
+
+        if ($project->isDeployed()) {
+            if ($request->expectsJson() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This project is deployed to Vercel and is permanently locked from further editing.',
+                    'project_url' => $project->project_url,
+                ], 423);
+            }
+
+            return back()->with('error', 'This project is deployed to Vercel and is permanently locked from editing.');
         }
 
         $htmlContent = $request->input('html_content')
