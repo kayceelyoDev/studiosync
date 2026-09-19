@@ -21,7 +21,13 @@ class AdminWorkspaceController extends Controller
 
     public function show(Project $project)
     {
-        $project->load('user');
+        $project->makeVisible('generated_prompt');
+        $project->load([
+            'user:id,name,email',
+            'workspace:id,name,slug',
+            'projectAssets',
+            'deployments' => fn ($q) => $q->latest()->limit(5),
+        ]);
 
         return Inertia::render('Admin/Workspaces/Show', [
             'workspace' => $project,
