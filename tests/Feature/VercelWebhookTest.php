@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\DeploymentStatus;
+use App\Enums\ProjectStatus;
 use App\Models\Deployment;
 use App\Models\Project;
 use App\Models\User;
@@ -25,8 +27,8 @@ beforeEach(function () {
         'project_name' => 'Cafe Luna',
         'preferences' => ['layout' => 'Modern'],
         'html_content' => '<!DOCTYPE html><html><body><h1>Cafe Luna</h1></body></html>',
-        'status' => 'completed',
-        'deployment_status' => 'deploying',
+        'status' => ProjectStatus::Completed,
+        'deployment_status' => DeploymentStatus::Deploying,
         'vercel_project_name' => 'cafe-luna',
     ]);
 
@@ -35,7 +37,7 @@ beforeEach(function () {
         'user_id' => $this->user->id,
         'vercel_deployment_id' => 'dpl_webhook_test_1',
         'vercel_project_id' => 'prj_cafe_luna',
-        'status' => 'building',
+        'status' => DeploymentStatus::Building,
     ]);
 });
 
@@ -82,11 +84,11 @@ test('webhook handles deployment.succeeded event and marks project as deployed',
     $response->assertOk()
         ->assertJson(['received' => true, 'action' => 'marked_ready']);
 
-    expect($this->deployment->fresh()->status)->toBe('ready')
+    expect($this->deployment->fresh()->status)->toBe(DeploymentStatus::Ready)
         ->and($this->deployment->fresh()->url)->toBe('https://cafe-luna.vercel.app');
 
-    expect($this->project->fresh()->deployment_status)->toBe('deployed')
-        ->and($this->project->fresh()->status)->toBe('deployed')
+    expect($this->project->fresh()->deployment_status)->toBe(DeploymentStatus::Deployed)
+        ->and($this->project->fresh()->status)->toBe(ProjectStatus::Deployed)
         ->and($this->project->fresh()->project_url)->toBe('https://cafe-luna.vercel.app');
 });
 
@@ -117,8 +119,8 @@ test('webhook handles deployment.error event and marks project as failed', funct
     $response->assertOk()
         ->assertJson(['received' => true, 'action' => 'marked_failed']);
 
-    expect($this->deployment->fresh()->status)->toBe('error')
+    expect($this->deployment->fresh()->status)->toBe(DeploymentStatus::Error)
         ->and($this->deployment->fresh()->error_message)->toBe('Build limit reached');
 
-    expect($this->project->fresh()->deployment_status)->toBe('failed');
+    expect($this->project->fresh()->deployment_status)->toBe(DeploymentStatus::Failed);
 });

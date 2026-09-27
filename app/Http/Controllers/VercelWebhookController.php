@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DeploymentStatus;
+use App\Enums\ProjectStatus;
 use App\Models\Deployment;
 use App\Models\Project;
 use App\Services\Vercel\VercelClient;
@@ -50,15 +52,15 @@ class VercelWebhookController extends Controller
 
             if ($deployment) {
                 $deployment->update([
-                    'status' => 'ready',
+                    'status' => DeploymentStatus::Ready->value,
                     'url' => $url,
                 ]);
 
                 $project = Project::find($deployment->project_id);
                 if ($project) {
                     $project->update([
-                        'deployment_status' => 'deployed',
-                        'status' => 'deployed',
+                        'deployment_status' => DeploymentStatus::Deployed->value,
+                        'status' => ProjectStatus::Deployed->value,
                         'project_url' => $url,
                         'deployed_at' => now(),
                     ]);
@@ -69,8 +71,8 @@ class VercelWebhookController extends Controller
                     $project = Project::where('vercel_project_id', $projectId)->first();
                     if ($project) {
                         $project->update([
-                            'deployment_status' => 'deployed',
-                            'status' => 'deployed',
+                            'deployment_status' => DeploymentStatus::Deployed->value,
+                            'status' => ProjectStatus::Deployed->value,
                             'project_url' => $url,
                             'deployed_at' => now(),
                         ]);
@@ -86,14 +88,14 @@ class VercelWebhookController extends Controller
 
             if ($deployment) {
                 $deployment->update([
-                    'status' => 'error',
+                    'status' => DeploymentStatus::Error->value,
                     'error_message' => $errorMessage,
                 ]);
 
                 $project = Project::find($deployment->project_id);
                 if ($project) {
                     $project->update([
-                        'deployment_status' => 'failed',
+                        'deployment_status' => DeploymentStatus::Failed->value,
                     ]);
                 }
             }

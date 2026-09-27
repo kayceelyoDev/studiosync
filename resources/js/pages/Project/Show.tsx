@@ -31,7 +31,8 @@ import {
     CreditCard,
     MessageSquareQuote,
     Newspaper,
-    Grid
+    Grid,
+    Wrench,
 } from 'lucide-react';
 
 interface ProjectAsset {
@@ -344,6 +345,16 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
 
                         {/* Right: Quick Action Buttons */}
                         <div className="flex flex-wrap items-center gap-2">
+                            {/* Create Service Request Button */}
+                            <Link
+                                href={`/requests/create?project_id=${project.id}`}
+                                className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold rounded-lg shadow-sm transition-all bg-indigo-600 hover:bg-indigo-700 text-white"
+                                title="Request email setup, custom domain, backend feature, or service"
+                            >
+                                <Wrench className="w-4 h-4 mr-1.5" />
+                                Request Service
+                            </Link>
+
                             {/* Live Site Visit Button */}
                             {liveUrl && (
                                 <a

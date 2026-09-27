@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Enums\DeploymentStatus;
+use App\Enums\ProjectStatus;
 use App\Exceptions\VercelProjectNameTakenException;
 use App\Models\Deployment;
 use App\Models\Project;
@@ -42,7 +44,7 @@ class DeployToVercelJob implements ShouldQueue
 
         if (empty($project->html_content)) {
             Log::warning("DeployToVercelJob aborted: Project ID {$this->projectId} has no html_content.");
-            $project->update(['deployment_status' => 'failed']);
+            $project->update(['deployment_status' => DeploymentStatus::Failed->value]);
 
             return;
         }
@@ -97,14 +99,14 @@ class DeployToVercelJob implements ShouldQueue
                 'vercel_deployment_id' => $dplId,
                 'vercel_project_id' => $vercelProjectId,
                 'url' => $dplUrl,
-                'status' => $readyState === 'READY' ? 'ready' : 'building',
+                'status' => $readyState === 'READY' ? DeploymentStatus::Ready->value : DeploymentStatus::Building->value,
                 'content_hash' => $contentHash,
             ]);
 
             if ($readyState === 'READY' && $dplUrl) {
                 $project->update([
-                    'deployment_status' => 'deployed',
-                    'status' => 'deployed',
+                    'deployment_status' => DeploymentStatus::Deployed->value,
+                    'status' => ProjectStatus::Deployed->value,
                     'project_url' => $dplUrl,
                     'deployed_at' => now(),
                 ]);
@@ -116,13 +118,13 @@ class DeployToVercelJob implements ShouldQueue
         } catch (VercelProjectNameTakenException $e) {
             Log::warning("Vercel project name conflict for project {$project->id}: ".$e->getMessage());
             $project->update([
-                'deployment_status' => 'failed',
+                'deployment_status' => DeploymentStatus::Failed->value,
             ]);
 
             Deployment::create([
                 'project_id' => $project->id,
                 'user_id' => $project->user_id,
-                'status' => 'error',
+                'status' => DeploymentStatus::Error->value,
                 'error_message' => "The subdomain '{$e->projectName}.vercel.app' is already claimed on Vercel. Please choose a different subdomain.",
             ]);
         } catch (\Throwable $e) {
@@ -131,13 +133,13 @@ class DeployToVercelJob implements ShouldQueue
             ]);
 
             $project->update([
-                'deployment_status' => 'failed',
+                'deployment_status' => DeploymentStatus::Failed->value,
             ]);
 
             Deployment::create([
                 'project_id' => $project->id,
                 'user_id' => $project->user_id,
-                'status' => 'error',
+                'status' => DeploymentStatus::Error->value,
                 'error_message' => $e->getMessage(),
             ]);
         } finally {

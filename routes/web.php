@@ -1,6 +1,10 @@
 <?php
 
+use App\Http\Controllers\Admin\ClientRequestCommentController as AdminClientRequestCommentController;
+use App\Http\Controllers\Admin\ClientRequestController as AdminClientRequestController;
 use App\Http\Controllers\AdminWorkspaceController;
+use App\Http\Controllers\ClientRequestCommentController;
+use App\Http\Controllers\ClientRequestController;
 use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\GenerateAiPromtPage;
 use App\Http\Controllers\ProjectAssetController;
@@ -37,6 +41,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('projects.deploy');
     Route::get('/projects/{project}/deployment-status', [DeploymentController::class, 'status'])->name('projects.deployment-status');
     Route::get('/projects/{project}/deployments', [DeploymentController::class, 'index'])->name('projects.deployments');
+
+    // Client Service Requests
+    Route::resource('/requests', ClientRequestController::class)
+        ->only(['index', 'create', 'store', 'show', 'destroy'])
+        ->parameters(['requests' => 'clientRequest']);
+    Route::post('/requests/{clientRequest}/comments', [ClientRequestCommentController::class, 'store'])
+        ->name('requests.comments.store');
 });
 
 /*
@@ -56,6 +67,13 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
     Route::get('/projects', [AdminWorkspaceController::class, 'index'])->name('projects.index');
     Route::get('/projects/{project}', [AdminWorkspaceController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [AdminWorkspaceController::class, 'update'])->name('projects.update');
+
+    // Admin Client Requests
+    Route::resource('/requests', AdminClientRequestController::class)
+        ->only(['index', 'show', 'update'])
+        ->parameters(['requests' => 'clientRequest']);
+    Route::post('/requests/{clientRequest}/comments', [AdminClientRequestCommentController::class, 'store'])
+        ->name('requests.comments.store');
 });
 
 /*
