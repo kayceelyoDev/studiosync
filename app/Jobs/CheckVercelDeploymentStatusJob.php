@@ -43,7 +43,6 @@ class CheckVercelDeploymentStatusJob implements ShouldQueue
         if (empty($deployment->vercel_deployment_id)) {
             return;
         }
-
         try {
             $data = $vercelClient->getDeployment($deployment->vercel_deployment_id);
             $readyState = strtoupper((string) ($data['readyState'] ?? ''));
