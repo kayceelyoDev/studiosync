@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Enums\DeploymentStatus;
+use App\Enums\ProjectStatus;
 use App\Models\Deployment;
 use App\Models\Project;
 use App\Services\Vercel\VercelClient;
@@ -36,7 +38,7 @@ class CheckVercelDeploymentStatusJob implements ShouldQueue
         }
 
         // If webhook or previous run already finished it, skip!
-        if (in_array($deployment->status, ['ready', 'error', 'canceled'], true)) {
+        if (in_array($deployment->status, [DeploymentStatus::Ready, DeploymentStatus::Error, DeploymentStatus::Canceled], true)) {
             return;
         }
 
@@ -51,15 +53,15 @@ class CheckVercelDeploymentStatusJob implements ShouldQueue
             if ($readyState === 'READY') {
                 $deploymentUrl = 'https://'.ltrim((string) ($data['url'] ?? ''), '/');
                 $deployment->update([
-                    'status' => 'ready',
+                    'status' => DeploymentStatus::Ready->value,
                     'url' => $deploymentUrl,
                 ]);
 
                 $project = Project::find($deployment->project_id);
                 if ($project) {
                     $project->update([
-                        'deployment_status' => 'deployed',
-                        'status' => 'deployed',
+                        'deployment_status' => DeploymentStatus::Deployed->value,
+                        'status' => ProjectStatus::Deployed->value,
                         'project_url' => $deploymentUrl,
                         'deployed_at' => now(),
                     ]);
@@ -73,14 +75,14 @@ class CheckVercelDeploymentStatusJob implements ShouldQueue
             if (in_array($readyState, ['ERROR', 'CANCELED'], true)) {
                 $errorMessage = $data['error']['message'] ?? 'Deployment failed on Vercel';
                 $deployment->update([
-                    'status' => 'error',
+                    'status' => DeploymentStatus::Error->value,
                     'error_message' => $errorMessage,
                 ]);
 
                 $project = Project::find($deployment->project_id);
                 if ($project) {
                     $project->update([
-                        'deployment_status' => 'failed',
+                        'deployment_status' => DeploymentStatus::Failed->value,
                     ]);
                 }
 

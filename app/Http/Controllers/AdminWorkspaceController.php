@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ProjectStatus;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -37,7 +38,7 @@ class AdminWorkspaceController extends Controller
     public function update(Request $request, Project $project)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:pending,in_progress,completed',
+            'status' => ['required', 'string', 'in:'.implode(',', array_column(ProjectStatus::cases(), 'value'))],
             'generated_prompt' => 'nullable|string',
             'project_url' => 'nullable|url',
         ]);

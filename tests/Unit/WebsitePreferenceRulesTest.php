@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ProjectStatus;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Workspace;
@@ -183,7 +184,7 @@ test('generatePrompt stores the AI-authored selected-layout contract', function 
             'Color Palette: Monochrome Gray (Sleek)',
             'Typography: Modern Sans-Serif (Clean, Tech)',
         ],
-        'status' => 'pending',
+        'status' => ProjectStatus::Pending,
     ]);
 
     $service->generatePrompt($project);
@@ -205,14 +206,14 @@ test('processAndSave adds overflow-x-hidden when missing', function () {
         'user_id' => $user->id,
         'project_name' => 'Test',
         'preferences' => [],
-        'status' => 'reviewing_html',
+        'status' => ProjectStatus::ReviewingHtml,
     ]);
 
     $html = '<!DOCTYPE html><html><head></head><body><h1>Test</h1></body></html>';
     $result = $service->processAndSave($project, $html);
 
     expect($result)->toContain('overflow-x-hidden');
-    expect($project->fresh()->status)->toBe('completed');
+    expect($project->fresh()->status)->toBe(ProjectStatus::Completed);
 });
 
 test('processAndSave normalizes generated mobile navigation', function () {
@@ -228,7 +229,7 @@ test('processAndSave normalizes generated mobile navigation', function () {
         'user_id' => $user->id,
         'project_name' => 'Test',
         'preferences' => [],
-        'status' => 'reviewing_html',
+        'status' => ProjectStatus::ReviewingHtml,
     ]);
 
     $html = <<<'HTML'
@@ -265,14 +266,14 @@ test('processAndSave rejects a page that does not implement the selected layout'
         'user_id' => $user->id,
         'project_name' => 'Test',
         'preferences' => ['Layout: Horizontal Scroll (Gallery)'],
-        'status' => 'reviewing_html',
+        'status' => ProjectStatus::ReviewingHtml,
     ]);
 
     $service->processAndSave(
         $project,
         '<!DOCTYPE html><html><head></head><body><section class="h-screen bg-cover">Wrong layout</section></body></html>'
     );
-    expect($project->fresh()->status)->toBe('completed');
+    expect($project->fresh()->status)->toBe(ProjectStatus::Completed);
 });
 
 test('processAndSave rejects cinematic output for a Bento selection', function () {
@@ -288,7 +289,7 @@ test('processAndSave rejects cinematic output for a Bento selection', function (
         'user_id' => $user->id,
         'project_name' => 'Test',
         'preferences' => ['Layout: Bento Box UI'],
-        'status' => 'reviewing_html',
+        'status' => ProjectStatus::ReviewingHtml,
     ]);
 
     $html = '<!DOCTYPE html><html><head></head><body data-layout="bento"><main data-bento-grid class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4">'
@@ -296,7 +297,7 @@ test('processAndSave rejects cinematic output for a Bento selection', function (
         .'</main><section class="h-screen bg-cover"></section></body></html>';
 
     $service->processAndSave($project, $html);
-    expect($project->fresh()->status)->toBe('completed');
+    expect($project->fresh()->status)->toBe(ProjectStatus::Completed);
 });
 
 test('processAndSave rejects template source and emoji characters', function () {
@@ -312,7 +313,7 @@ test('processAndSave rejects template source and emoji characters', function () 
         'user_id' => $user->id,
         'project_name' => 'Test',
         'preferences' => [],
-        'status' => 'reviewing_html',
+        'status' => ProjectStatus::ReviewingHtml,
     ]);
 
     expect(fn () => $service->processAndSave(

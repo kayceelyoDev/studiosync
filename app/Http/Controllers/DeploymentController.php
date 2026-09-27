@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DeploymentStatus;
 use App\Jobs\DeployToVercelJob;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +24,7 @@ class DeploymentController extends Controller
                 'success' => false,
                 'message' => 'This project has already been deployed to Vercel and is permanently locked from further editing.',
                 'project_url' => $project->project_url,
-                'deployment_status' => 'deployed',
+                'deployment_status' => DeploymentStatus::Deployed->value,
             ], 423);
         }
 
@@ -34,7 +35,7 @@ class DeploymentController extends Controller
         ]);
 
         $project->update([
-            'deployment_status' => 'deploying',
+            'deployment_status' => DeploymentStatus::Deploying->value,
         ]);
 
         DeployToVercelJob::dispatch(
@@ -45,7 +46,7 @@ class DeploymentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Deployment initiated. Your website is being published to Vercel.',
-            'deployment_status' => 'deploying',
+            'deployment_status' => DeploymentStatus::Deploying->value,
         ]);
     }
 

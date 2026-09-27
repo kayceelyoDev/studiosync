@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DeploymentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,13 @@ class Deployment extends Model
         'content_hash',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'status' => DeploymentStatus::class,
+        ];
+    }
+
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
@@ -33,11 +41,11 @@ class Deployment extends Model
 
     public function isReady(): bool
     {
-        return $this->status === 'ready';
+        return $this->status === DeploymentStatus::Ready;
     }
 
     public function isFailed(): bool
     {
-        return in_array($this->status, ['error', 'canceled', 'failed'], true);
+        return in_array($this->status, [DeploymentStatus::Error, DeploymentStatus::Canceled, DeploymentStatus::Failed], true);
     }
 }

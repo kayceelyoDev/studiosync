@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\DeploymentStatus;
+use App\Enums\ProjectStatus;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Project extends Model
 {
+    use HasFactory;
+
     protected $hidden = ['generated_prompt'];
 
     protected $fillable = [
@@ -32,6 +37,8 @@ class Project extends Model
         return [
             'preferences' => 'array',
             'deployed_at' => 'datetime',
+            'status' => ProjectStatus::class,
+            'deployment_status' => DeploymentStatus::class,
         ];
     }
 
@@ -67,12 +74,13 @@ class Project extends Model
 
     public function isDeployed(): bool
     {
-        return $this->deployment_status === 'deployed' || $this->status === 'deployed';
+        return $this->deployment_status === DeploymentStatus::Deployed
+            || $this->status === ProjectStatus::Deployed;
     }
 
     public function isDeploying(): bool
     {
-        return $this->deployment_status === 'deploying';
+        return $this->deployment_status === DeploymentStatus::Deploying;
     }
 
     public function isEditable(): bool

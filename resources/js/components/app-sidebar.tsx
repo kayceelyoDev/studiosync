@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, LayoutGrid } from 'lucide-react';
+import { BookOpen, LayoutGrid, ClipboardList } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -14,6 +14,8 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as requestsIndex } from '@/routes/requests';
+import { index as adminRequestsIndex } from '@/routes/admin/requests';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -22,13 +24,23 @@ const mainNavItems: NavItem[] = [
         href: dashboard(),
         icon: LayoutGrid,
     },
+    {
+        title: 'Requests',
+        href: requestsIndex(),
+        icon: ClipboardList,
+    },
 ];
 
 const adminNavItems: NavItem[] = [
     {
-        title: 'Client Requests',
-        href: '/admin/workspaces',
+        title: 'Client Projects',
+        href: '/admin/projects',
         icon: BookOpen,
+    },
+    {
+        title: 'Service Requests',
+        href: adminRequestsIndex(),
+        icon: ClipboardList,
     },
 ];
 

@@ -16,7 +16,8 @@ import {
     Copy,
     Check,
     Edit3,
-    ArrowRight
+    ArrowRight,
+    Wrench,
 } from 'lucide-react';
 
 interface Workspace {
@@ -329,19 +330,24 @@ export default function ShowWorkspace({ workspace, projects = [] }: { workspace:
                                         </div>
 
                                         {/* Card Footer & Actions */}
-                                        <div className="pt-3 border-t border-border flex items-center justify-between">
-                                            {isDeployed ? (
-                                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                                    <Lock className="w-3 h-3" /> Locked
-                                                </span>
-                                            ) : (
+                                        <div className="pt-3 border-t border-border flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                {!isDeployed && (
+                                                    <Link
+                                                        href={`/projects/${project.id}/edit`}
+                                                        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+                                                    >
+                                                        <Edit3 className="w-3 h-3" /> Edit
+                                                    </Link>
+                                                )}
                                                 <Link
-                                                    href={`/projects/${project.id}/edit`}
-                                                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                                                    href={`/requests/create?project_id=${project.id}`}
+                                                    className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                                                    title="Request email, booking, domain, or custom service"
                                                 >
-                                                    <Edit3 className="w-3 h-3" /> Edit Page
+                                                    <Wrench className="w-3 h-3" /> Request Service
                                                 </Link>
-                                            )}
+                                            </div>
 
                                             <Link
                                                 href={`/projects/${project.id}`}

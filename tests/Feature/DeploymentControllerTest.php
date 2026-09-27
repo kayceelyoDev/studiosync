@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\DeploymentStatus;
 use App\Jobs\DeployToVercelJob;
 use App\Models\Project;
 use App\Models\User;
@@ -25,7 +26,7 @@ beforeEach(function () {
         'preferences' => ['layout' => 'Modern'],
         'html_content' => '<!DOCTYPE html><html><body><h1>Oasis Coffee</h1></body></html>',
         'status' => 'completed',
-        'deployment_status' => 'not_deployed',
+        'deployment_status' => DeploymentStatus::NotDeployed,
     ]);
 });
 
@@ -44,7 +45,7 @@ test('authorized client can trigger deployment with custom subdomain', function 
             'deployment_status' => 'deploying',
         ]);
 
-    expect($this->project->fresh()->deployment_status)->toBe('deploying');
+    expect($this->project->fresh()->deployment_status)->toBe(DeploymentStatus::Deploying);
 
     Queue::assertPushed(DeployToVercelJob::class, function ($job) {
         return $job->projectId === $this->project->id
