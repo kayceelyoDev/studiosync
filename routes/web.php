@@ -92,6 +92,7 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
         Route::patch('/', [AdminContactEmailerController::class, 'update'])->name('update');
         Route::patch('/toggle', [AdminContactEmailerController::class, 'toggle'])->name('toggle');
         Route::post('/deploy', [AdminContactEmailerController::class, 'deploy'])->name('deploy');
+        Route::post('/test', [AdminContactEmailerController::class, 'testMessage'])->name('test');
     });
 
     // Admin Client Requests

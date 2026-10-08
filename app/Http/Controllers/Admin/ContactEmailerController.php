@@ -7,10 +7,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreContactEmailerRequest;
 use App\Http\Requests\Admin\UpdateContactEmailerRequest;
 use App\Jobs\DeployToVercelJob;
+use App\Mail\GuestContactedClient;
 use App\Models\ClientRequest;
+use App\Models\ContactMessage;
 use App\Models\Project;
 use App\Services\ContactEmailerService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,6 +30,14 @@ class ContactEmailerController extends Controller
         $project->load(['contactEmailer', 'user:id,name,email', 'workspace:id,name']);
 
         $emailer = $project->contactEmailer;
+
+        // Ensure script is injected if emailer exists and is active
+        if ($emailer && $emailer->is_active) {
+            if (! str_contains($project->html_content ?? '', '<!-- SS-EMAILER-START -->')) {
+                $this->service->injectContactScript($project, $emailer->public_token);
+                $project->refresh();
+            }
+        }
 
         return Inertia::render('Admin/Emailer/Show', [
             'project' => [
@@ -129,5 +141,41 @@ class ContactEmailerController extends Controller
         DeployToVercelJob::dispatch($project->id);
 
         return back()->with('success', 'Redeploy triggered. The site will update in about 30 seconds.');
+    }
+
+    /**
+     * Send a test contact inquiry to verify configuration and mail delivery.
+     */
+    public function testMessage(Project $project): JsonResponse
+    {
+        $emailer = $project->contactEmailer;
+
+        if (! $emailer) {
+            return response()->json(['success' => false, 'message' => 'No emailer configured for this project.'], 404);
+        }
+
+        $contactMessage = ContactMessage::create([
+            'contact_emailer_id' => $emailer->id,
+            'guest_name' => 'Test Guest (Admin Verification)',
+            'guest_email' => 'guest.tester@example.com',
+            'subject' => 'Test Inquiry: Emailer Verification',
+            'message' => "This is an automated test message sent by an administrator to verify the contact emailer flow.\n\nRecipient: {$emailer->recipient_email}\nReply Name: {$emailer->reply_name}",
+            'ip_address' => request()->ip(),
+        ]);
+
+        Mail::queue(new GuestContactedClient($contactMessage, $emailer));
+
+        return response()->json([
+            'success' => true,
+            'message' => "Test message sent! Logged to database and queued for delivery to {$emailer->recipient_email}.",
+            'contact_message' => [
+                'id' => $contactMessage->id,
+                'guest_name' => $contactMessage->guest_name,
+                'guest_email' => $contactMessage->guest_email,
+                'subject' => $contactMessage->subject,
+                'created_at' => $contactMessage->created_at?->toIso8601String(),
+            ],
+            'messages_count' => $emailer->messages()->count(),
+        ]);
     }
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, Link, useForm, setLayoutProps, router } from '@inertiajs/react';
 import {
     ChevronLeft,
@@ -18,6 +18,10 @@ import {
     Code2,
     ExternalLink,
     Loader2,
+    FlaskConical,
+    Sparkles,
+    ShieldAlert,
+    Inbox,
 } from 'lucide-react';
 
 interface ProjectInfo {
@@ -61,6 +65,9 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
     const [copiedToken, setCopiedToken] = useState<boolean>(false);
     const [copiedEndpoint, setCopiedEndpoint] = useState<boolean>(false);
     const [isDeploying, setIsDeploying] = useState<boolean>(false);
+    const [isTesting, setIsTesting] = useState<boolean>(false);
+    const [testFeedback, setTestFeedback] = useState<{ success: boolean; message: string } | null>(null);
+    const [liveIframeNotification, setLiveIframeNotification] = useState<string | null>(null);
 
     setLayoutProps({
         breadcrumbs: [
@@ -78,6 +85,20 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
 
     const isConfigured = Boolean(emailer);
     const endpointUrl = emailer ? `${window.location.origin}/api/contact/${emailer.public_token}` : '';
+
+    // Listen for live form submissions inside the preview iframe
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'SS_CONTACT_SUBMITTED') {
+                setLiveIframeNotification('🎉 Test inquiry submitted from preview! The message was processed and recorded.');
+                router.reload({ only: ['emailer'] });
+                setTimeout(() => setLiveIframeNotification(null), 8000);
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, []);
 
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
@@ -109,6 +130,43 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
         });
     };
 
+    const handleSendTestMessage = async () => {
+        if (!isConfigured) return;
+        setIsTesting(true);
+        setTestFeedback(null);
+
+        try {
+            const response = await fetch(`/admin/projects/${project.id}/emailer/test`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                },
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                setTestFeedback({
+                    success: true,
+                    message: data.message || 'Test message queued and saved to database successfully!',
+                });
+                router.reload({ only: ['emailer'] });
+            } else {
+                setTestFeedback({
+                    success: false,
+                    message: data.message || 'Failed to send test message. Check your logs.',
+                });
+            }
+        } catch (err: any) {
+            setTestFeedback({
+                success: false,
+                message: err.message || 'Network error occurred while testing.',
+            });
+        } finally {
+            setIsTesting(false);
+        }
+    };
+
     const handleCopy = (text: string, type: 'token' | 'endpoint') => {
         navigator.clipboard.writeText(text);
         if (type === 'token') {
@@ -119,6 +177,10 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
             setTimeout(() => setCopiedEndpoint(false), 2000);
         }
     };
+
+    // Inspect project HTML for contact form
+    const hasForm = project.html_content ? /<form[\s>]/i.test(project.html_content) : false;
+    const hasEmailField = project.html_content ? /(type="email"|name="email"|id="[^"]*email[^"]*")/i.test(project.html_content) : false;
 
     return (
         <>
@@ -149,7 +211,7 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                                                 : 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/30'
                                         }`}>
-                                            {emailer?.is_active ? 'ACTIVE' : 'INACTIVE'}
+                                            {emailer?.is_active ? 'ACTIVE' : 'PAUSED / INACTIVE'}
                                         </span>
                                     ) : (
                                         <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
@@ -181,7 +243,7 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                                 href={project.project_url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="inline-flex items-center text-primary hover:underline"
+                                                className="inline-flex items-center text-primary hover:underline font-medium"
                                             >
                                                 Live Site <ExternalLink className="w-3 h-3 ml-1" />
                                             </a>
@@ -192,19 +254,89 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                         </div>
                     </div>
 
+                    {/* Step-by-Step Flow Bar */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div className={`p-3.5 rounded-xl border ${isConfigured ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${isConfigured ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                                1
+                            </div>
+                            <div className="text-xs">
+                                <div className="font-semibold">Configure Recipient</div>
+                                <div className="text-muted-foreground text-[11px]">{isConfigured ? 'Email specified' : 'Set client inbox'}</div>
+                            </div>
+                        </div>
+
+                        <div className={`p-3.5 rounded-xl border ${emailer?.is_active ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${emailer?.is_active ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                                2
+                            </div>
+                            <div className="text-xs">
+                                <div className="font-semibold">Activate & Inject</div>
+                                <div className="text-muted-foreground text-[11px]">{emailer?.is_active ? 'Script active' : 'Click to enable'}</div>
+                            </div>
+                        </div>
+
+                        <div className={`p-3.5 rounded-xl border ${(emailer?.messages_count ?? 0) > 0 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${(emailer?.messages_count ?? 0) > 0 ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                                3
+                            </div>
+                            <div className="text-xs">
+                                <div className="font-semibold">Test Connection</div>
+                                <div className="text-muted-foreground text-[11px]">{emailer?.messages_count ?? 0} messages logged</div>
+                            </div>
+                        </div>
+
+                        <div className={`p-3.5 rounded-xl border ${project.is_deployed ? 'bg-card border-border text-foreground' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
+                            <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                                4
+                            </div>
+                            <div className="text-xs">
+                                <div className="font-semibold">Deploy to Vercel</div>
+                                <div className="text-muted-foreground text-[11px]">{project.is_deployed ? 'Live on domain' : 'Ready to deploy'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Inactive Warning Alert */}
+                    {isConfigured && !emailer?.is_active && (
+                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-2.5 text-amber-800 dark:text-amber-300 font-medium">
+                                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                                <span>
+                                    <strong>Emailer is currently Paused:</strong> Submissions in the preview or on the live site are temporarily blocked until enabled.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleToggle}
+                                className="px-4 py-2 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs shrink-0 transition-colors"
+                            >
+                                Enable Emailer Now
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Live Iframe Submission Notification */}
+                    {liveIframeNotification && (
+                        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 text-sm font-semibold flex items-center gap-2 animate-bounce">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                            <span>{liveIframeNotification}</span>
+                        </div>
+                    )}
+
                     {/* Split View: Left (Interactive Preview) & Right (Config Controls) */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                        {/* LEFT COLUMN: Preview (2 cols) */}
+                        {/* LEFT COLUMN: Preview & Verification (2 cols) */}
                         <div className="lg:col-span-2 flex flex-col gap-4">
                             {/* Toolbar */}
                             <div className="flex items-center justify-between border-b border-border pb-2">
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
                                         <Code2 className="w-4 h-4 text-primary" />
-                                        Interactive Site Preview
+                                        Interactive Site Preview & Form Tester
                                     </span>
-                                    {isConfigured && (
+                                    {isConfigured && emailer?.is_active && (
                                         <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                                             Script Injected
                                         </span>
@@ -258,7 +390,7 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                             srcDoc={project.html_content}
                                             title="Emailer Preview"
                                             className="w-full h-full border-0 bg-white"
-                                            sandbox="allow-scripts allow-same-origin allow-forms"
+                                            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
                                         />
                                     </div>
                                 ) : (
@@ -268,16 +400,45 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                 )}
                             </div>
 
-                            {/* Injected Script Notice */}
-                            <div className="p-4 rounded-xl border border-border bg-card shadow-xs text-xs text-muted-foreground space-y-1">
-                                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                    Automatic Form Interceptor
-                                </p>
-                                <p>
-                                    When active, StudioSync injects a lightweight client-side listener targeting the site&apos;s contact form.
-                                    Submissions are sent directly to the public API endpoint via JSON POST, saved to the database, and dispatched to the configured recipient email.
-                                </p>
+                            {/* HTML Inspection & Verification Card */}
+                            <div className="p-4 rounded-xl border border-border bg-card shadow-xs text-xs space-y-2.5">
+                                <div className="flex items-center justify-between pb-2 border-b border-border">
+                                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                        <Sparkles className="w-4 h-4 text-primary" />
+                                        Form Detection & HTML Audit
+                                    </span>
+                                    <Link
+                                        href={`/admin/projects/${project.id}`}
+                                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium"
+                                    >
+                                        <span>Edit Project HTML</span>
+                                        <ExternalLink className="w-3 h-3" />
+                                    </Link>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-muted-foreground">
+                                    <div className="flex items-center gap-2">
+                                        {hasForm ? (
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                        ) : (
+                                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                                        )}
+                                        <span>
+                                            {hasForm ? 'Contact <form> element detected in page' : 'No <form> tag found in HTML'}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {hasEmailField ? (
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                        ) : (
+                                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                                        )}
+                                        <span>
+                                            {hasEmailField ? 'Email input identified and mapped' : 'Email field could not be located'}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -316,7 +477,7 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                         <div className="text-red-500 text-xs mt-1">{form.errors.recipient_email}</div>
                                     )}
                                     <p className="text-[11px] text-muted-foreground mt-1">
-                                        Guest submissions will be sent to this inbox.
+                                        Guest submissions will be forwarded to this inbox.
                                     </p>
                                 </div>
 
@@ -356,13 +517,61 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                     ) : (
                                         <>
                                             <Send className="w-4 h-4" />
-                                            {isConfigured ? 'Update Configuration' : 'Save & Inject Emailer'}
+                                            {isConfigured ? 'Update Configuration' : 'Save & Activate Emailer'}
                                         </>
                                     )}
                                 </button>
                             </form>
 
-                            {/* Status & Public Endpoint Card (when configured) */}
+                            {/* Testing & Verification Card */}
+                            {isConfigured && emailer && (
+                                <div className="bg-card rounded-xl border border-indigo-500/30 bg-indigo-500/5 shadow-xs p-6 space-y-4">
+                                    <div className="flex items-center justify-between pb-3 border-b border-border">
+                                        <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+                                            <FlaskConical className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                            <span>Test Emailer Connection</span>
+                                        </div>
+                                        <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full bg-indigo-500/10">
+                                            Instant Check
+                                        </span>
+                                    </div>
+
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        Click below to send a sample contact message to verify the database logging and email queuing to <strong className="text-foreground">{emailer.recipient_email}</strong>.
+                                    </p>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleSendTestMessage}
+                                        disabled={isTesting || !emailer.is_active}
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm h-10 px-4 disabled:opacity-50"
+                                    >
+                                        {isTesting ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Sending Test Inquiry...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FlaskConical className="w-4 h-4" />
+                                                Send Test Inquiry Now
+                                            </>
+                                        )}
+                                    </button>
+
+                                    {testFeedback && (
+                                        <div className={`p-3 rounded-lg text-xs leading-relaxed border ${
+                                            testFeedback.success
+                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-medium'
+                                                : 'bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300'
+                                        }`}>
+                                            {testFeedback.message}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Status & Public Endpoint Card */}
                             {isConfigured && emailer && (
                                 <div className="bg-card rounded-xl border border-border shadow-xs p-6 space-y-4">
                                     <div className="flex items-center justify-between pb-3 border-b border-border">
@@ -433,12 +642,12 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                             Redeploy Required for Live Site
                                         </p>
                                         <p className="leading-relaxed">
-                                            This project is already published on Vercel. Any emailer configuration or HTML injection changes will not be visible on the live site until you trigger a redeploy.
+                                            This project is already published on Vercel. After testing, trigger a redeploy to push the working contact form to the live domain.
                                         </p>
                                     </div>
                                 ) : (
                                     <p className="text-xs text-muted-foreground leading-relaxed">
-                                        When you are ready, deploy this project to Vercel so the contact form goes live on the public domain.
+                                        When testing is verified, deploy this project to Vercel so the contact form goes live on the public domain.
                                     </p>
                                 )}
 

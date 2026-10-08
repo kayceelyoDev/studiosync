@@ -378,3 +378,30 @@ test('GuestContactedClient mailable renders correctly with reply-to header', fun
     $mailable->assertSeeInHtml('I would like to order a birthday cake.');
     $mailable->assertSeeInHtml('Reply to Maria Santos');
 });
+
+test('admin can send test inquiry from emailer page', function () {
+    Mail::fake();
+
+    $admin = makeTestAdmin();
+    $client = makeTestClient();
+    $project = createTestProject($client);
+
+    $emailer = ContactEmailer::create([
+        'project_id' => $project->id,
+        'recipient_email' => 'client@business.com',
+        'reply_name' => 'Owner',
+        'public_token' => (string) Str::uuid(),
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->postJson(route('admin.projects.emailer.test', $project))
+        ->assertOk()
+        ->assertJson([
+            'success' => true,
+            'messages_count' => 1,
+        ]);
+
+    expect($emailer->messages()->count())->toBe(1);
+    Mail::assertQueued(GuestContactedClient::class);
+});
