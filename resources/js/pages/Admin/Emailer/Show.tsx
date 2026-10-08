@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Head, Link, useForm, setLayoutProps, router } from '@inertiajs/react';
 import {
     ChevronLeft,
@@ -22,6 +22,8 @@ import {
     Sparkles,
     ShieldAlert,
     Inbox,
+    Clock,
+    SendHorizontal,
 } from 'lucide-react';
 
 interface ProjectInfo {
@@ -54,16 +56,31 @@ interface EmailerInfo {
     created_at?: string | null;
 }
 
+interface RecentMessage {
+    id: number;
+    guest_name: string;
+    guest_email: string;
+    subject: string;
+    message: string;
+    created_at?: string | null;
+}
+
 interface Props {
     project: ProjectInfo;
     emailer: EmailerInfo | null;
+    mail_driver?: string;
+    recent_messages?: RecentMessage[];
 }
 
-export default function AdminEmailerShow({ project, emailer }: Props) {
+export default function AdminEmailerShow({ project, emailer, mail_driver = 'log', recent_messages = [] }: Props) {
+    const iframeRef = useRef<HTMLIFrameElement>(null);
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [copiedToken, setCopiedToken] = useState<boolean>(false);
     const [copiedEndpoint, setCopiedEndpoint] = useState<boolean>(false);
+    const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
+    const [fillSampleSuccess, setFillSampleSuccess] = useState<boolean>(false);
+    const [showSmtpGuide, setShowSmtpGuide] = useState<boolean>(false);
     const [isDeploying, setIsDeploying] = useState<boolean>(false);
     const [isTesting, setIsTesting] = useState<boolean>(false);
     const [testFeedback, setTestFeedback] = useState<{ success: boolean; message: string } | null>(null);
@@ -86,12 +103,45 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
     const isConfigured = Boolean(emailer);
     const endpointUrl = emailer ? `${window.location.origin}/api/contact/${emailer.public_token}` : '';
 
+    // Pre-fill preview form fields with sample inquiry data
+    const handleFillSampleData = () => {
+        try {
+            const iframe = iframeRef.current;
+            if (!iframe || !iframe.contentDocument) return;
+            const doc = iframe.contentDocument;
+
+            const nameEl = doc.querySelector('input[id*="name" i], input[name*="name" i]') as HTMLInputElement | null;
+            const emailEl = doc.querySelector('input[type="email"], input[id*="email" i], input[name*="email" i]') as HTMLInputElement | null;
+            const phoneEl = doc.querySelector('input[type="tel"], input[id*="phone" i], input[name*="phone" i]') as HTMLInputElement | null;
+            const msgEl = doc.querySelector('textarea, input[id*="message" i], input[name*="message" i]') as HTMLTextAreaElement | null;
+            const selectEl = doc.querySelector('select') as HTMLSelectElement | null;
+
+            if (nameEl) nameEl.value = 'Jonathan Sterling (Sample Guest)';
+            if (emailEl) emailEl.value = 'guest.tester@example.com';
+            if (phoneEl) phoneEl.value = '+1 (555) 019-2834';
+            if (selectEl && selectEl.options.length > 0) selectEl.selectedIndex = 0;
+            if (msgEl) msgEl.value = 'Hello! I am inquiring through the website contact form to test email delivery and notification routing.';
+
+            [nameEl, emailEl, phoneEl, msgEl].forEach((el) => {
+                if (el) {
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+
+            setFillSampleSuccess(true);
+            setTimeout(() => setFillSampleSuccess(false), 3000);
+        } catch (e) {
+            console.warn('Could not auto-fill preview form:', e);
+        }
+    };
+
     // Listen for live form submissions inside the preview iframe
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (event.data?.type === 'SS_CONTACT_SUBMITTED') {
-                setLiveIframeNotification('🎉 Test inquiry submitted from preview! The message was processed and recorded.');
-                router.reload({ only: ['emailer'] });
+                setLiveIframeNotification('🎉 Test inquiry submitted from preview! Message recorded and email generated.');
+                router.reload({ only: ['emailer', 'recent_messages'] });
                 setTimeout(() => setLiveIframeNotification(null), 8000);
             }
         };
@@ -150,7 +200,7 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                     success: true,
                     message: data.message || 'Test message queued and saved to database successfully!',
                 });
-                router.reload({ only: ['emailer'] });
+                router.reload({ only: ['emailer', 'recent_messages'] });
             } else {
                 setTestFeedback({
                     success: false,
@@ -346,6 +396,22 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                 <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-lg">
                                     <button
                                         type="button"
+                                        onClick={handleFillSampleData}
+                                        className={`px-2.5 py-1 rounded text-xs transition-all font-medium inline-flex items-center gap-1.5 ${
+                                            fillSampleSuccess
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-muted-foreground hover:text-foreground hover:bg-card'
+                                        }`}
+                                        title="Auto-fill contact form fields inside the preview with sample test data"
+                                    >
+                                        <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                        <span>{fillSampleSuccess ? 'Sample Data Filled!' : 'Fill Test Data'}</span>
+                                    </button>
+
+                                    <div className="w-[1px] h-4 bg-border/70 my-auto mx-0.5" />
+
+                                    <button
+                                        type="button"
                                         onClick={() => setDeviceMode('desktop')}
                                         className={`p-1.5 rounded text-xs transition-all ${
                                             deviceMode === 'desktop' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground'
@@ -386,6 +452,7 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                         }`}
                                     >
                                         <iframe
+                                            ref={iframeRef}
                                             key={iframeKey}
                                             srcDoc={project.html_content}
                                             title="Emailer Preview"
@@ -440,10 +507,155 @@ export default function AdminEmailerShow({ project, emailer }: Props) {
                                     </div>
                                 </div>
                             </div>
+                            {/* Recent Dispatched Inquiries Card */}
+                            <div className="p-4 rounded-xl border border-border bg-card shadow-xs text-xs space-y-3.5">
+                                <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                                    <div className="flex items-center gap-2">
+                                        <Inbox className="w-4 h-4 text-primary" />
+                                        <span className="font-semibold text-sm text-foreground">Recent Contact Form Inquiries</span>
+                                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-muted-foreground">
+                                            {recent_messages.length}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => router.reload({ only: ['recent_messages', 'emailer'] })}
+                                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium cursor-pointer"
+                                    >
+                                        <RotateCw className="w-3 h-3" />
+                                        <span>Refresh</span>
+                                    </button>
+                                </div>
+
+                                {recent_messages.length > 0 ? (
+                                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                                        {recent_messages.map((msg) => (
+                                            <div key={msg.id} className="p-3.5 rounded-lg border border-border bg-background hover:border-primary/40 transition-colors space-y-2">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-foreground text-xs">{msg.guest_name}</span>
+                                                        <span className="px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-mono font-medium">
+                                                            {msg.guest_email}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
+                                                        <Clock className="w-3 h-3" />
+                                                        <span>{msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : ''}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-xs font-medium text-foreground">
+                                                    <span className="text-muted-foreground font-normal">Subject: </span>
+                                                    {msg.subject}
+                                                </div>
+
+                                                <p className="text-xs text-muted-foreground bg-muted/40 p-2.5 rounded border border-border/50 whitespace-pre-wrap leading-relaxed font-sans">
+                                                    {msg.message}
+                                                </p>
+
+                                                <div className="flex items-center justify-between pt-1 text-[11px]">
+                                                    <span className="text-muted-foreground">
+                                                        {mail_driver === 'log' ? '📝 Logged in storage/logs/laravel.log' : '📡 Dispatched via SMTP'}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(msg.message);
+                                                                setCopiedMessageId(msg.id);
+                                                                setTimeout(() => setCopiedMessageId(null), 2000);
+                                                            }}
+                                                            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted transition-colors cursor-pointer"
+                                                        >
+                                                            {copiedMessageId === msg.id ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                                                            {copiedMessageId === msg.id ? 'Copied' : 'Copy'}
+                                                        </button>
+                                                        <a
+                                                            href={`mailto:${msg.guest_email}?subject=Re: ${encodeURIComponent(msg.subject)}`}
+                                                            className="font-semibold text-primary hover:underline inline-flex items-center gap-1 px-2.5 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
+                                                        >
+                                                            <Mail className="w-3 h-3" />
+                                                            <span>Reply</span>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-muted-foreground space-y-2">
+                                        <Inbox className="w-8 h-8 mx-auto opacity-30" />
+                                        <p className="text-xs font-medium text-foreground">No inquiries logged yet</p>
+                                        <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+                                            Click <strong>Fill Test Data</strong> on the preview toolbar above and submit the form, or click <strong>Send Test Inquiry Now</strong> to verify the flow.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* RIGHT COLUMN: Configuration Form & Actions (1 col) */}
                         <div className="flex flex-col gap-6">
+
+                            {/* Mail Driver Notice & Guide */}
+                            <div className={`rounded-xl border p-4 text-xs space-y-2.5 ${
+                                mail_driver === 'log'
+                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200'
+                                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 font-semibold text-xs">
+                                        {mail_driver === 'log' ? (
+                                            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                        ) : (
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                        )}
+                                        <span>
+                                            Driver: <strong>{mail_driver}</strong> {mail_driver === 'log' ? '(Local Log Mode)' : '(Live Internet Delivery)'}
+                                        </span>
+                                    </div>
+                                    {mail_driver === 'log' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSmtpGuide((v) => !v)}
+                                            className="text-[11px] font-semibold underline hover:opacity-80 inline-flex items-center gap-1 cursor-pointer"
+                                        >
+                                            {showSmtpGuide ? 'Hide Setup' : 'Gmail Setup ▾'}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {mail_driver === 'log' ? (
+                                    <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                        Emails are written to <code className="bg-muted px-1.5 py-0.5 rounded text-foreground font-mono">storage/logs/laravel.log</code> and the inquiry list on the left. To receive real emails at <strong className="text-foreground">{emailer?.recipient_email || 'your Gmail'}</strong>, configure SMTP in <code className="bg-muted px-1.5 py-0.5 rounded text-foreground font-mono">.env</code>.
+                                    </p>
+                                ) : (
+                                    <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                        Emails will be delivered directly across the internet to the recipient inbox via your configured mail server.
+                                    </p>
+                                )}
+
+                                {mail_driver === 'log' && showSmtpGuide && (
+                                    <div className="mt-3 p-3 rounded-lg bg-card border border-border text-[11px] space-y-2 text-foreground">
+                                        <p className="font-semibold text-amber-600 dark:text-amber-400">
+                                            To receive live emails in Gmail, update .env:
+                                        </p>
+                                        <pre className="p-2.5 rounded bg-muted text-[10px] overflow-x-auto text-foreground font-mono leading-normal select-all">
+{`MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-16-char-app-password
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS="your-email@gmail.com"
+MAIL_FROM_NAME="StudioSync"`}
+                                        </pre>
+                                        <p className="text-[10px] text-muted-foreground">
+                                            📌 In your Google Account: Go to <strong>Security → 2-Step Verification → App Passwords</strong>, create one for StudioSync, and paste the 16 characters into <code className="font-mono text-foreground">MAIL_PASSWORD</code>.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Configuration Form Card */}
                             <form onSubmit={handleSave} className="bg-card rounded-xl border border-border shadow-xs p-6 space-y-4">

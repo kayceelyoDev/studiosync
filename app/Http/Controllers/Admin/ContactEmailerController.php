@@ -31,13 +31,24 @@ class ContactEmailerController extends Controller
 
         $emailer = $project->contactEmailer;
 
-        // Ensure script is injected if emailer exists and is active
+        // Ensure script is up-to-date if emailer exists and is active
         if ($emailer && $emailer->is_active) {
-            if (! str_contains($project->html_content ?? '', '<!-- SS-EMAILER-START -->')) {
-                $this->service->injectContactScript($project, $emailer->public_token);
-                $project->refresh();
-            }
+            $this->service->injectContactScript($project, $emailer->public_token);
+            $project->refresh();
         }
+
+        $recentMessages = $emailer ? $emailer->messages()
+            ->latest('id')
+            ->take(10)
+            ->get(['id', 'guest_name', 'guest_email', 'subject', 'message', 'created_at'])
+            ->map(fn ($msg) => [
+                'id' => $msg->id,
+                'guest_name' => $msg->guest_name,
+                'guest_email' => $msg->guest_email,
+                'subject' => $msg->subject,
+                'message' => $msg->message,
+                'created_at' => $msg->created_at?->toIso8601String(),
+            ]) : [];
 
         return Inertia::render('Admin/Emailer/Show', [
             'project' => [
@@ -68,6 +79,8 @@ class ContactEmailerController extends Controller
                 'messages_count' => $emailer->messages()->count(),
                 'created_at' => $emailer->created_at?->toIso8601String(),
             ] : null,
+            'mail_driver' => config('mail.default'),
+            'recent_messages' => $recentMessages,
         ]);
     }
 
@@ -163,11 +176,35 @@ class ContactEmailerController extends Controller
             'ip_address' => request()->ip(),
         ]);
 
-        Mail::queue(new GuestContactedClient($contactMessage, $emailer));
+        $mailDriver = config('mail.default');
+
+        try {
+            Mail::sendNow(new GuestContactedClient($contactMessage, $emailer));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => "Mail dispatch failed ({$mailDriver}): {$e->getMessage()}",
+                'contact_message' => [
+                    'id' => $contactMessage->id,
+                    'guest_name' => $contactMessage->guest_name,
+                    'guest_email' => $contactMessage->guest_email,
+                    'subject' => $contactMessage->subject,
+                    'created_at' => $contactMessage->created_at?->toIso8601String(),
+                ],
+                'messages_count' => $emailer->messages()->count(),
+                'mail_driver' => $mailDriver,
+            ], 422);
+        }
+
+        $note = $mailDriver === 'log'
+            ? "Mail driver is set to 'log' in .env — email logged to storage/logs/laravel.log. To send real emails to {$emailer->recipient_email}, set MAIL_MAILER=smtp."
+            : "Email dispatched to {$emailer->recipient_email} via {$mailDriver}.";
 
         return response()->json([
             'success' => true,
-            'message' => "Test message sent! Logged to database and queued for delivery to {$emailer->recipient_email}.",
+            'message' => "Test message #{$contactMessage->id} processed! {$note}",
             'contact_message' => [
                 'id' => $contactMessage->id,
                 'guest_name' => $contactMessage->guest_name,
@@ -176,6 +213,7 @@ class ContactEmailerController extends Controller
                 'created_at' => $contactMessage->created_at?->toIso8601String(),
             ],
             'messages_count' => $emailer->messages()->count(),
+            'mail_driver' => $mailDriver,
         ]);
     }
 }

@@ -111,6 +111,8 @@ class ContactEmailerService
     }
     if (!form) return;
 
+    var isSubmitting = false;
+
     function findVal(selArray) {
       for (var s = 0; s < selArray.length; s++) {
         var el = form.querySelector(selArray[s]);
@@ -143,6 +145,15 @@ class ContactEmailerService
         e.stopPropagation();
       }
 
+      if (isSubmitting) return;
+
+      if (form.checkValidity && !form.checkValidity()) {
+        if (form.reportValidity) {
+          form.reportValidity();
+        }
+        return;
+      }
+
       var name = findVal([
         'input[id*="name" i]',
         'input[name*="name" i]',
@@ -158,7 +169,7 @@ class ContactEmailerService
       ]);
 
       if (!email) {
-        showBanner('\u26A0\uFE0F Please enter a valid email address.', false);
+        showBanner('⚠️ Please enter a valid email address.', false);
         return;
       }
 
@@ -193,19 +204,31 @@ class ContactEmailerService
       } else {
         messageParts.push('Inquiry submitted through website contact form.');
       }
-      var fullMessage = messageParts.join('\n\n');
+      var fullMessage = messageParts.join('\\n\\n');
 
       var btn = form.querySelector('button[type="submit"], input[type="submit"], button:last-of-type');
       var originalBtnHtml = btn ? btn.innerHTML : '';
       if (btn) {
         btn.disabled = true;
         btn.style.opacity = '0.7';
-        btn.innerHTML = '<span>\u23F3 Transmitting Inquiry\u2026</span>';
+        btn.innerHTML = '<span>⏳ Transmitting Inquiry…</span>';
       }
 
-      showBanner('\uD83D\uDCE1 Transmitting your inquiry\u2026', true);
+      isSubmitting = true;
+      showBanner('📡 Transmitting your inquiry…', true);
 
-      fetch('{$endpoint}', {
+      var configuredEndpoint = '{$endpoint}';
+      var endpoint = configuredEndpoint;
+      try {
+        var hostOrigin = (window.parent && window.parent.location && window.parent.location.origin)
+          ? window.parent.location.origin
+          : ((window.location && window.location.origin && window.location.origin !== 'null') ? window.location.origin : '');
+        if (hostOrigin && (hostOrigin.indexOf('localhost') !== -1 || hostOrigin.indexOf('127.0.0.1') !== -1)) {
+          endpoint = hostOrigin + '/api/contact/{$token}';
+        }
+      } catch (e) {}
+
+      fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -228,12 +251,12 @@ class ContactEmailerService
         });
       })
       .then(function () {
-        showBanner('\u2705 Inquiry Sent Successfully! Your message has been routed to the owner inbox.', true);
+        showBanner('✅ Inquiry Sent Successfully! Your message has been routed to the owner inbox.', true);
         form.reset();
         if (btn) {
           btn.disabled = false;
           btn.style.opacity = '1';
-          btn.innerHTML = '<span>\u2713 Sent!</span>';
+          btn.innerHTML = '<span>✓ Sent!</span>';
           setTimeout(function () { btn.innerHTML = originalBtnHtml; }, 4000);
         }
         try {
@@ -243,12 +266,15 @@ class ContactEmailerService
         } catch (e) {}
       })
       .catch(function (err) {
-        showBanner('\u26A0\uFE0F ' + (err.message || 'Something went wrong. Please try again.'), false);
+        showBanner('⚠️ ' + (err.message || 'Something went wrong. Please try again.'), false);
         if (btn) {
           btn.disabled = false;
           btn.style.opacity = '1';
           btn.innerHTML = originalBtnHtml;
         }
+      })
+      .finally(function () {
+        isSubmitting = false;
       });
     }
 
@@ -258,9 +284,7 @@ class ContactEmailerService
     var submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
     if (submitBtn) {
       submitBtn.addEventListener('click', function (e) {
-        if (!form.checkValidity || form.checkValidity()) {
-          handleSubmit(e);
-        }
+        handleSubmit(e);
       });
     }
   }

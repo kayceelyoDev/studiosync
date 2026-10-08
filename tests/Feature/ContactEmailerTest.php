@@ -403,5 +403,5 @@ test('admin can send test inquiry from emailer page', function () {
         ]);
 
     expect($emailer->messages()->count())->toBe(1);
-    Mail::assertQueued(GuestContactedClient::class);
+    Mail::assertSent(GuestContactedClient::class);
 });
