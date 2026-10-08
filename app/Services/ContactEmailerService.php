@@ -82,6 +82,12 @@ class ContactEmailerService
 
         $script = <<<SCRIPT
 <!-- SS-EMAILER-START -->
+<style>
+@keyframes ss-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
 <script>
 (function () {
   function initContactForm() {
@@ -123,20 +129,33 @@ class ContactEmailerService
       return '';
     }
 
-    function showBanner(text, isSuccess) {
-      var existing = form.querySelector('#ss-status-banner');
+    function showToast(text, isError) {
+      var existing = document.getElementById('ss-floating-toast');
       if (existing) existing.remove();
-      var b = document.createElement('div');
-      b.id = 'ss-status-banner';
-      b.style.cssText = 'padding:14px 18px;margin:14px 0;border-radius:8px;font-size:13px;font-weight:600;line-height:1.5;text-align:center;transition:all 0.3s ease;' +
-        (isSuccess ? 'background:#10b981;color:#ffffff;box-shadow:0 4px 12px rgba(16,185,129,0.3);' : 'background:#ef4444;color:#ffffff;box-shadow:0 4px 12px rgba(239,68,68,0.3);');
-      b.innerHTML = text;
-      var btn = form.querySelector('button[type="submit"], input[type="submit"], button:last-of-type');
-      if (btn && btn.parentNode) {
-        btn.parentNode.insertBefore(b, btn);
-      } else {
-        form.appendChild(b);
-      }
+
+      var t = document.createElement('div');
+      t.id = 'ss-floating-toast';
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translate(-50%,10px);z-index:999999;background:#18181b;color:#ffffff;padding:10px 18px;border-radius:9999px;font-size:13px;font-weight:500;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;box-shadow:0 10px 25px -5px rgba(0,0,0,0.4),0 0 0 1px rgba(255,255,255,0.1);display:inline-flex;align-items:center;gap:8px;pointer-events:none;transition:opacity 0.25s ease,transform 0.25s ease;opacity:0;';
+
+      var iconSvg = isError
+        ? '<svg style="width:16px;height:16px;color:#f87171;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+        : '<svg style="width:16px;height:16px;color:#34d399;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+      t.innerHTML = iconSvg + '<span>' + text + '</span>';
+      document.body.appendChild(t);
+
+      requestAnimationFrame(function () {
+        t.style.opacity = '1';
+        t.style.transform = 'translate(-50%,0)';
+      });
+
+      setTimeout(function () {
+        t.style.opacity = '0';
+        t.style.transform = 'translate(-50%,10px)';
+        setTimeout(function () {
+          if (t.parentNode) t.parentNode.removeChild(t);
+        }, 300);
+      }, 3500);
     }
 
     function handleSubmit(e) {
@@ -169,7 +188,7 @@ class ContactEmailerService
       ]);
 
       if (!email) {
-        showBanner('⚠️ Please enter a valid email address.', false);
+        showToast('Please enter a valid email address.', true);
         return;
       }
 
@@ -207,15 +226,27 @@ class ContactEmailerService
       var fullMessage = messageParts.join('\\n\\n');
 
       var btn = form.querySelector('button[type="submit"], input[type="submit"], button:last-of-type');
+      var isInput = btn && btn.tagName === 'INPUT';
       var originalBtnHtml = btn ? btn.innerHTML : '';
+      var originalBtnValue = btn ? btn.value : '';
+
       if (btn) {
         btn.disabled = true;
-        btn.style.opacity = '0.7';
-        btn.innerHTML = '<span>⏳ Transmitting Inquiry…</span>';
+        var btnRect = btn.getBoundingClientRect();
+        if (btnRect.width > 0) {
+          btn.style.minWidth = btnRect.width + 'px';
+        }
+        btn.style.opacity = '0.85';
+        btn.style.cursor = 'wait';
+
+        if (isInput) {
+          btn.value = 'Sending...';
+        } else {
+          btn.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;gap:8px;"><svg style="width:1.15em;height:1.15em;animation:ss-spin 0.75s linear infinite;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10"></path></svg><span>Sending...</span></span>';
+        }
       }
 
       isSubmitting = true;
-      showBanner('📡 Transmitting your inquiry…', true);
 
       var configuredEndpoint = '{$endpoint}';
       var endpoint = configuredEndpoint;
@@ -251,14 +282,28 @@ class ContactEmailerService
         });
       })
       .then(function () {
-        showBanner('✅ Inquiry Sent Successfully! Your message has been routed to the owner inbox.', true);
         form.reset();
+        showToast('Message sent successfully!', false);
+
         if (btn) {
           btn.disabled = false;
           btn.style.opacity = '1';
-          btn.innerHTML = '<span>✓ Sent!</span>';
-          setTimeout(function () { btn.innerHTML = originalBtnHtml; }, 4000);
+          btn.style.cursor = '';
+          if (isInput) {
+            btn.value = 'Sent!';
+          } else {
+            btn.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;gap:8px;"><svg style="width:1.15em;height:1.15em;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Sent!</span></span>';
+          }
+          setTimeout(function () {
+            if (isInput) {
+              btn.value = originalBtnValue;
+            } else {
+              btn.innerHTML = originalBtnHtml;
+            }
+            btn.style.minWidth = '';
+          }, 3500);
         }
+
         try {
           if (window.parent && window.parent !== window) {
             window.parent.postMessage({ type: 'SS_CONTACT_SUBMITTED', success: true }, '*');
@@ -266,11 +311,17 @@ class ContactEmailerService
         } catch (e) {}
       })
       .catch(function (err) {
-        showBanner('⚠️ ' + (err.message || 'Something went wrong. Please try again.'), false);
+        showToast(err.message || 'Something went wrong. Please try again.', true);
         if (btn) {
           btn.disabled = false;
           btn.style.opacity = '1';
-          btn.innerHTML = originalBtnHtml;
+          btn.style.cursor = '';
+          if (isInput) {
+            btn.value = originalBtnValue;
+          } else {
+            btn.innerHTML = originalBtnHtml;
+          }
+          btn.style.minWidth = '';
         }
       })
       .finally(function () {
