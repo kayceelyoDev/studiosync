@@ -114,8 +114,8 @@ export default function ContactMessages({ project, emailer, messages }: Props) {
                                     </h1>
                                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                                         emailer.is_active
-                                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                            : 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/30'
+                                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-muted text-muted-foreground border border-border'
                                     }`}>
                                         {emailer.is_active ? 'Emailer Active' : 'Emailer Inactive'}
                                     </span>
@@ -151,8 +151,8 @@ export default function ContactMessages({ project, emailer, messages }: Props) {
                     </div>
 
                     {/* How replies work helper banner */}
-                    <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-start gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                    <div className="p-4 rounded-xl border border-border bg-card shadow-xs flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                         <div className="text-xs text-muted-foreground leading-relaxed">
                             <strong className="text-foreground font-semibold">Replying to your guests:</strong> When guests submit inquiries on your site, an email notification is automatically delivered to your inbox (<span className="text-foreground font-medium">{emailer.recipient_email}</span>). Hitting <strong className="text-foreground">Reply</strong> directly in your email client will respond straight to the guest.
                         </div>

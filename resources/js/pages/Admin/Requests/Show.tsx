@@ -185,9 +185,9 @@ export default function AdminRequestsShow({
 
                                 {/* Quick Action Banner to work on / fulfill the request */}
                                 {request.project && (
-                                    <div className="p-4 rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                                    <div className="p-4 rounded-xl border border-border bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
                                         <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                            <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
                                                 {request.category === 'email_integration' ? (
                                                     <Mail className="w-5 h-5" />
                                                 ) : (
@@ -199,7 +199,7 @@ export default function AdminRequestsShow({
                                                     {request.category === 'email_integration'
                                                         ? 'Fulfill Emailer Integration'
                                                         : `Work on Project: ${request.project.name}`}
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold uppercase">
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold uppercase">
                                                         Direct Action
                                                     </span>
                                                 </h3>
@@ -217,7 +217,7 @@ export default function AdminRequestsShow({
                                                     ? `/admin/projects/${request.project.id}/emailer?request_id=${request.id}`
                                                     : `/admin/projects/${request.project.id}`
                                             }
-                                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shrink-0 whitespace-nowrap"
+                                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs shrink-0 whitespace-nowrap"
                                         >
                                             {request.category === 'email_integration' ? (
                                                 <>
@@ -402,9 +402,9 @@ export default function AdminRequestsShow({
                     <div className="flex flex-col gap-4">
                         {/* Emailer Integration Action Card */}
                         {request.category === 'email_integration' && request.project && (
-                            <div className="bg-card border border-indigo-500/30 bg-indigo-500/5 rounded-xl shadow-xs p-5 space-y-3">
-                                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-semibold text-sm">
-                                    <Mail className="w-4 h-4" />
+                            <div className="bg-card border border-border rounded-xl shadow-xs p-5 space-y-3">
+                                <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+                                    <Mail className="w-4 h-4 text-primary" />
                                     <span>Contact Emailer Integration</span>
                                 </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -414,7 +414,7 @@ export default function AdminRequestsShow({
                                 </p>
                                 <Link
                                     href={`/admin/projects/${request.project.id}/emailer?request_id=${request.id}`}
-                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-4 shadow-sm"
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 shadow-xs"
                                 >
                                     <Mail className="w-4 h-4" />
                                     {request.project.has_emailer ? 'Manage Project Emailer' : 'Configure & Deploy Emailer'}

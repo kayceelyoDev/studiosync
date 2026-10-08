@@ -479,13 +479,13 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                     {workspace.contact_emailer ? (
                                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                                             workspace.contact_emailer.is_active
-                                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                                : 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/30'
+                                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                                : 'bg-muted text-muted-foreground border border-border'
                                         }`}>
                                             {workspace.contact_emailer.is_active ? 'Active' : 'Inactive'}
                                         </span>
                                     ) : (
-                                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                                             Not Configured
                                         </span>
                                     )}
@@ -497,7 +497,7 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                 </p>
                                 <Link
                                     href={`/admin/projects/${workspace.id}/emailer`}
-                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-4 shadow-sm"
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 shadow-xs"
                                 >
                                     <Mail className="w-4 h-4" />
                                     {workspace.contact_emailer ? 'Manage & Deploy Emailer' : 'Configure Emailer'}

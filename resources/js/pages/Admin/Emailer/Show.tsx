@@ -306,42 +306,62 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
 
                     {/* Step-by-Step Flow Bar */}
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                        <div className={`p-3.5 rounded-xl border ${isConfigured ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${isConfigured ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
-                                1
+                        {/* Step 1 */}
+                        <div className={`p-3.5 rounded-xl border bg-card shadow-xs flex items-center gap-3 transition-colors ${
+                            isConfigured ? 'border-border' : 'border-border/60 bg-muted/20'
+                        }`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                isConfigured ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-muted text-muted-foreground'
+                            }`}>
+                                {isConfigured ? <Check className="w-3.5 h-3.5" /> : '1'}
                             </div>
                             <div className="text-xs">
-                                <div className="font-semibold">Configure Recipient</div>
-                                <div className="text-muted-foreground text-[11px]">{isConfigured ? 'Email specified' : 'Set client inbox'}</div>
+                                <div className="font-semibold text-foreground">Configure Recipient</div>
+                                <div className="text-muted-foreground text-[11px]">{isConfigured ? 'Inbox designated' : 'Set client inbox'}</div>
                             </div>
                         </div>
 
-                        <div className={`p-3.5 rounded-xl border ${emailer?.is_active ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${emailer?.is_active ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
-                                2
+                        {/* Step 2 */}
+                        <div className={`p-3.5 rounded-xl border bg-card shadow-xs flex items-center gap-3 transition-colors ${
+                            emailer?.is_active ? 'border-border' : 'border-border/60 bg-muted/20'
+                        }`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                emailer?.is_active ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-muted text-muted-foreground'
+                            }`}>
+                                {emailer?.is_active ? <Check className="w-3.5 h-3.5" /> : '2'}
                             </div>
                             <div className="text-xs">
-                                <div className="font-semibold">Activate & Inject</div>
+                                <div className="font-semibold text-foreground">Activate & Inject</div>
                                 <div className="text-muted-foreground text-[11px]">{emailer?.is_active ? 'Script active' : 'Click to enable'}</div>
                             </div>
                         </div>
 
-                        <div className={`p-3.5 rounded-xl border ${(emailer?.messages_count ?? 0) > 0 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${(emailer?.messages_count ?? 0) > 0 ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
-                                3
+                        {/* Step 3 */}
+                        <div className={`p-3.5 rounded-xl border bg-card shadow-xs flex items-center gap-3 transition-colors ${
+                            (emailer?.messages_count ?? 0) > 0 ? 'border-border' : 'border-border/60 bg-muted/20'
+                        }`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                (emailer?.messages_count ?? 0) > 0 ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-muted text-muted-foreground'
+                            }`}>
+                                {(emailer?.messages_count ?? 0) > 0 ? <Check className="w-3.5 h-3.5" /> : '3'}
                             </div>
                             <div className="text-xs">
-                                <div className="font-semibold">Test Connection</div>
+                                <div className="font-semibold text-foreground">Test Connection</div>
                                 <div className="text-muted-foreground text-[11px]">{emailer?.messages_count ?? 0} messages logged</div>
                             </div>
                         </div>
 
-                        <div className={`p-3.5 rounded-xl border ${project.is_deployed ? 'bg-card border-border text-foreground' : 'bg-card border-border text-foreground'} flex items-center gap-3`}>
-                            <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
-                                4
+                        {/* Step 4 */}
+                        <div className={`p-3.5 rounded-xl border bg-card shadow-xs flex items-center gap-3 transition-colors ${
+                            project.is_deployed ? 'border-border' : 'border-border/60 bg-muted/20'
+                        }`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                project.is_deployed ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-muted text-muted-foreground'
+                            }`}>
+                                {project.is_deployed ? <Check className="w-3.5 h-3.5" /> : '4'}
                             </div>
                             <div className="text-xs">
-                                <div className="font-semibold">Deploy to Vercel</div>
+                                <div className="font-semibold text-foreground">Deploy to Vercel</div>
                                 <div className="text-muted-foreground text-[11px]">{project.is_deployed ? 'Live on domain' : 'Ready to deploy'}</div>
                             </div>
                         </div>
@@ -349,9 +369,9 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
 
                     {/* Inactive Warning Alert */}
                     {isConfigured && !emailer?.is_active && (
-                        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                            <div className="flex items-center gap-2.5 text-amber-800 dark:text-amber-300 font-medium">
-                                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                        <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-2.5 text-amber-700 dark:text-amber-400 font-medium">
+                                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
                                 <span>
                                     <strong>Emailer is currently Paused:</strong> Submissions in the preview or on the live site are temporarily blocked until enabled.
                                 </span>
@@ -359,7 +379,7 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
                             <button
                                 type="button"
                                 onClick={handleToggle}
-                                className="px-4 py-2 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs shrink-0 transition-colors"
+                                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs shrink-0 transition-colors cursor-pointer"
                             >
                                 Enable Emailer Now
                             </button>
@@ -368,7 +388,7 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
 
                     {/* Live Iframe Submission Notification */}
                     {liveIframeNotification && (
-                        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 text-sm font-semibold flex items-center gap-2 animate-bounce">
+                        <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-sm font-semibold flex items-center gap-2 animate-bounce">
                             <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                             <span>{liveIframeNotification}</span>
                         </div>
@@ -399,7 +419,7 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
                                         onClick={handleFillSampleData}
                                         className={`px-2.5 py-1 rounded text-xs transition-all font-medium inline-flex items-center gap-1.5 ${
                                             fillSampleSuccess
-                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                ? 'bg-primary text-primary-foreground shadow-xs'
                                                 : 'text-muted-foreground hover:text-foreground hover:bg-card'
                                         }`}
                                         title="Auto-fill contact form fields inside the preview with sample test data"
@@ -737,26 +757,26 @@ MAIL_FROM_NAME="StudioSync"`}
 
                             {/* Testing & Verification Card */}
                             {isConfigured && emailer && (
-                                <div className="bg-card rounded-xl border border-indigo-500/30 bg-indigo-500/5 shadow-xs p-6 space-y-4">
+                                <div className="bg-card rounded-xl border border-border shadow-xs p-6 space-y-4">
                                     <div className="flex items-center justify-between pb-3 border-b border-border">
                                         <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
-                                            <FlaskConical className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                            <FlaskConical className="w-4 h-4 text-primary" />
                                             <span>Test Emailer Connection</span>
                                         </div>
-                                        <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full bg-indigo-500/10">
+                                        <span className="text-[11px] font-semibold text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20">
                                             Instant Check
                                         </span>
                                     </div>
 
                                     <p className="text-xs text-muted-foreground leading-relaxed">
-                                        Click below to send a sample contact message to verify the database logging and email queuing to <strong className="text-foreground">{emailer.recipient_email}</strong>.
+                                        Click below to send a sample contact message to verify database logging and email dispatch to <strong className="text-foreground">{emailer.recipient_email}</strong>.
                                     </p>
 
                                     <button
                                         type="button"
                                         onClick={handleSendTestMessage}
                                         disabled={isTesting || !emailer.is_active}
-                                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm h-10 px-4 disabled:opacity-50"
+                                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-10 px-4 disabled:opacity-50 cursor-pointer"
                                     >
                                         {isTesting ? (
                                             <>
@@ -774,8 +794,8 @@ MAIL_FROM_NAME="StudioSync"`}
                                     {testFeedback && (
                                         <div className={`p-3 rounded-lg text-xs leading-relaxed border ${
                                             testFeedback.success
-                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300 font-medium'
-                                                : 'bg-red-500/10 border-red-500/30 text-red-800 dark:text-red-300'
+                                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium'
+                                                : 'bg-red-500/10 border-red-500/20 text-red-700 dark:text-red-300'
                                         }`}>
                                             {testFeedback.message}
                                         </div>
@@ -791,10 +811,10 @@ MAIL_FROM_NAME="StudioSync"`}
                                         <button
                                             type="button"
                                             onClick={handleToggle}
-                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
                                                 emailer.is_active
-                                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30'
-                                                    : 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-500/25 border border-zinc-500/30'
+                                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20'
+                                                    : 'bg-muted text-muted-foreground hover:bg-muted/80 border border-border'
                                             }`}
                                         >
                                             <Power className="w-3 h-3" />
@@ -809,7 +829,7 @@ MAIL_FROM_NAME="StudioSync"`}
                                             <button
                                                 type="button"
                                                 onClick={() => handleCopy(endpointUrl, 'endpoint')}
-                                                className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                                className="text-xs text-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
                                             >
                                                 {copiedEndpoint ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                                                 {copiedEndpoint ? 'Copied' : 'Copy URL'}
@@ -827,7 +847,7 @@ MAIL_FROM_NAME="StudioSync"`}
                                             <button
                                                 type="button"
                                                 onClick={() => handleCopy(emailer.public_token, 'token')}
-                                                className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                                                className="text-xs text-primary hover:underline inline-flex items-center gap-1 cursor-pointer"
                                             >
                                                 {copiedToken ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                                                 {copiedToken ? 'Copied' : 'Copy Token'}
@@ -867,7 +887,7 @@ MAIL_FROM_NAME="StudioSync"`}
                                     type="button"
                                     onClick={handleDeploy}
                                     disabled={isDeploying}
-                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm h-10 px-4 disabled:opacity-50"
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 h-10 px-4 disabled:opacity-50 cursor-pointer"
                                 >
                                     {isDeploying ? (
                                         <>

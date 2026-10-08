@@ -643,8 +643,8 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                 {emailer && (
                                     <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
                                         emailer.is_active
-                                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                            : 'bg-muted text-muted-foreground'
+                                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-muted text-muted-foreground border border-border'
                                     }`}>
                                         {emailer.is_active ? 'Active' : 'Inactive'}
                                     </span>
@@ -1114,8 +1114,8 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                             </div>
                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
                                                 emailer.is_active
-                                                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                                                    : 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border border-zinc-500/30'
+                                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                                    : 'bg-muted text-muted-foreground border border-border'
                                             }`}>
                                                 {emailer.is_active && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
                                                 {emailer.is_active ? 'Active & Receiving Messages' : 'Temporarily Inactive'}
@@ -1142,7 +1142,7 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                         <div className="pt-2">
                                             <Link
                                                 href={`/projects/${project.id}/contact-messages`}
-                                                className="inline-flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
+                                                className="inline-flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs"
                                             >
                                                 <Mail className="w-4 h-4" />
                                                 View All Contact Messages ({emailer.messages_count ?? 0})
@@ -1153,7 +1153,7 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                     {/* How it works card */}
                                     <div className="p-6 bg-card rounded-xl border border-border shadow-xs space-y-4">
                                         <div className="flex items-center gap-2 pb-3 border-b border-border">
-                                            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                                            <CheckCircle2 className="w-5 h-5 text-primary" />
                                             <h3 className="text-base font-semibold text-foreground">How Guest Replies Work</h3>
                                         </div>
 
