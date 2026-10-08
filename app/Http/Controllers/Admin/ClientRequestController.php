@@ -60,7 +60,7 @@ class ClientRequestController extends Controller
     {
         $clientRequest->load([
             'user:id,name,email',
-            'project:id,project_name',
+            'project' => fn ($query) => $query->select('id', 'project_name')->with('contactEmailer'),
             'admin:id,name',
             'comments.user:id,name',
         ]);
@@ -86,7 +86,12 @@ class ClientRequestController extends Controller
                 'status_color' => $clientRequest->status->color(),
                 'admin_notes' => $clientRequest->admin_notes,
                 'project' => $clientRequest->project
-                    ? ['id' => $clientRequest->project->id, 'name' => $clientRequest->project->project_name]
+                    ? [
+                        'id' => $clientRequest->project->id,
+                        'name' => $clientRequest->project->project_name,
+                        'has_emailer' => $clientRequest->project->contactEmailer !== null,
+                        'emailer_active' => (bool) ($clientRequest->project->contactEmailer?->is_active ?? false),
+                    ]
                     : null,
                 'client' => $clientRequest->user
                     ? ['id' => $clientRequest->user->id, 'name' => $clientRequest->user->name, 'email' => $clientRequest->user->email]

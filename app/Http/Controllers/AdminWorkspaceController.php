@@ -28,6 +28,7 @@ class AdminWorkspaceController extends Controller
             'workspace:id,name,slug',
             'projectAssets',
             'deployments' => fn ($q) => $q->latest()->limit(5),
+            'contactEmailer' => fn ($q) => $q->withCount('messages'),
         ]);
 
         return Inertia::render('Admin/Workspaces/Show', [

@@ -2,14 +2,18 @@
 
 use App\Http\Controllers\Admin\ClientRequestCommentController as AdminClientRequestCommentController;
 use App\Http\Controllers\Admin\ClientRequestController as AdminClientRequestController;
+use App\Http\Controllers\Admin\ContactEmailerController as AdminContactEmailerController;
 use App\Http\Controllers\AdminWorkspaceController;
 use App\Http\Controllers\ClientRequestCommentController;
 use App\Http\Controllers\ClientRequestController;
+use App\Http\Controllers\ContactFormController;
+use App\Http\Controllers\ContactMessageController;
 use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\GenerateAiPromtPage;
 use App\Http\Controllers\ProjectAssetController;
 use App\Http\Controllers\VercelWebhookController;
 use App\Http\Controllers\WorkspaceController;
+use App\Models\Project;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -48,14 +52,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->parameters(['requests' => 'clientRequest']);
     Route::post('/requests/{clientRequest}/comments', [ClientRequestCommentController::class, 'store'])
         ->name('requests.comments.store');
+
+    // Client Contact Messages
+    Route::get('/projects/{project}/contact-messages', [ContactMessageController::class, 'index'])
+        ->name('projects.contact-messages.index');
 });
 
 /*
 |--------------------------------------------------------------------------
-| Webhook Routes (unauthenticated, signature-verified)
+| Public & Webhook Routes (unauthenticated)
 |--------------------------------------------------------------------------
 */
 Route::post('/api/webhooks/vercel', [VercelWebhookController::class, 'handle'])->name('webhooks.vercel');
+
+// Public Contact Form Submission (throttled)
+Route::post('/api/contact/{token}', [ContactFormController::class, 'store'])
+    ->middleware('throttle:3,10')
+    ->name('contact.store');
 
 /*
 |--------------------------------------------------------------------------
@@ -67,6 +80,19 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
     Route::get('/projects', [AdminWorkspaceController::class, 'index'])->name('projects.index');
     Route::get('/projects/{project}', [AdminWorkspaceController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [AdminWorkspaceController::class, 'update'])->name('projects.update');
+
+    // Compatibility redirects
+    Route::get('/workspaces', fn () => redirect()->route('admin.projects.index'));
+    Route::get('/workspaces/{project}', fn (Project $project) => redirect()->route('admin.projects.show', $project));
+
+    // Admin Project Contact Emailer
+    Route::prefix('/projects/{project}/emailer')->name('projects.emailer.')->group(function () {
+        Route::get('/', [AdminContactEmailerController::class, 'show'])->name('show');
+        Route::post('/', [AdminContactEmailerController::class, 'store'])->name('store');
+        Route::patch('/', [AdminContactEmailerController::class, 'update'])->name('update');
+        Route::patch('/toggle', [AdminContactEmailerController::class, 'toggle'])->name('toggle');
+        Route::post('/deploy', [AdminContactEmailerController::class, 'deploy'])->name('deploy');
+    });
 
     // Admin Client Requests
     Route::resource('/requests', AdminClientRequestController::class)

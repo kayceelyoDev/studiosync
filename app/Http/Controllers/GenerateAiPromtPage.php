@@ -72,6 +72,7 @@ class GenerateAiPromtPage extends Controller
             'workspace:id,name,slug',
             'projectAssets',
             'deployments' => fn ($query) => $query->latest()->limit(10),
+            'contactEmailer' => fn ($query) => $query->withCount('messages'),
         ]);
 
         return Inertia::render('Project/Show', [

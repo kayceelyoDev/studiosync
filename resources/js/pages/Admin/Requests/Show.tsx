@@ -12,6 +12,7 @@ import {
     Save,
     Maximize2,
     ExternalLink,
+    Mail,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { index as adminRequestsIndex, update as adminRequestUpdate } from '@/routes/admin/requests';
@@ -38,7 +39,12 @@ interface AdminRequestDetail {
     status_label: string;
     status_color: string;
     admin_notes: string | null;
-    project: { id: number; name: string } | null;
+    project: {
+        id: number;
+        name: string;
+        has_emailer?: boolean;
+        emailer_active?: boolean;
+    } | null;
     client: { id: number; name: string; email: string } | null;
     admin: { id: number; name: string } | null;
     is_ageing: boolean;
@@ -176,6 +182,57 @@ export default function AdminRequestsShow({
                                     <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Description</h2>
                                     <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{request.description}</p>
                                 </div>
+
+                                {/* Quick Action Banner to work on / fulfill the request */}
+                                {request.project && (
+                                    <div className="p-4 rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-10 h-10 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                                {request.category === 'email_integration' ? (
+                                                    <Mail className="w-5 h-5" />
+                                                ) : (
+                                                    <ExternalLink className="w-5 h-5" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                                                    {request.category === 'email_integration'
+                                                        ? 'Fulfill Emailer Integration'
+                                                        : `Work on Project: ${request.project.name}`}
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold uppercase">
+                                                        Direct Action
+                                                    </span>
+                                                </h3>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    {request.category === 'email_integration'
+                                                        ? 'Set up recipient email, inject the contact form script, and redeploy to Vercel.'
+                                                        : 'Open the project workspace to inspect, edit, or configure the site for this request.'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <Link
+                                            href={
+                                                request.category === 'email_integration'
+                                                    ? `/admin/projects/${request.project.id}/emailer?request_id=${request.id}`
+                                                    : `/admin/projects/${request.project.id}`
+                                            }
+                                            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shrink-0 whitespace-nowrap"
+                                        >
+                                            {request.category === 'email_integration' ? (
+                                                <>
+                                                    <Mail className="w-4 h-4" />
+                                                    <span>Configure Emailer &rarr;</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <ExternalLink className="w-4 h-4" />
+                                                    <span>Open Project Workspace &rarr;</span>
+                                                </>
+                                            )}
+                                        </Link>
+                                    </div>
+                                )}
 
                                 {request.attachment_url && (
                                     <div>
@@ -343,6 +400,48 @@ export default function AdminRequestsShow({
 
                     {/* Right — Admin Actions */}
                     <div className="flex flex-col gap-4">
+                        {/* Emailer Integration Action Card */}
+                        {request.category === 'email_integration' && request.project && (
+                            <div className="bg-card border border-indigo-500/30 bg-indigo-500/5 rounded-xl shadow-xs p-5 space-y-3">
+                                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-semibold text-sm">
+                                    <Mail className="w-4 h-4" />
+                                    <span>Contact Emailer Integration</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    {request.project.has_emailer
+                                        ? `A contact emailer is already configured for this project (${request.project.emailer_active ? 'Active' : 'Inactive'}). You can reconfigure, modify, or deploy it.`
+                                        : 'Configure the recipient email and reply name, inject the contact script, and deploy the working form to Vercel.'}
+                                </p>
+                                <Link
+                                    href={`/admin/projects/${request.project.id}/emailer?request_id=${request.id}`}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-4 shadow-sm"
+                                >
+                                    <Mail className="w-4 h-4" />
+                                    {request.project.has_emailer ? 'Manage Project Emailer' : 'Configure & Deploy Emailer'}
+                                </Link>
+                            </div>
+                        )}
+
+                        {/* Non-emailer Project Action Card */}
+                        {request.category !== 'email_integration' && request.project && (
+                            <div className="bg-card border border-border rounded-xl shadow-xs p-5 space-y-3">
+                                <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+                                    <ExternalLink className="w-4 h-4 text-primary" />
+                                    <span>Associated Project</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    Review and edit the website workspace for <strong className="text-foreground">{request.project.name}</strong> to fulfill this request.
+                                </p>
+                                <Link
+                                    href={`/admin/projects/${request.project.id}`}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 shadow-sm"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                    Open Project Workspace
+                                </Link>
+                            </div>
+                        )}
+
                         <form onSubmit={handleStatusSubmit} className="bg-card border border-border rounded-xl shadow-xs p-5 space-y-4">
                             <h2 className="text-sm font-semibold text-foreground">Update Request</h2>
 

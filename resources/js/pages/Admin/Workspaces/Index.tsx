@@ -41,7 +41,7 @@ export default function AdminWorkspacesIndex({ workspaces }: { workspaces: any }
                                             <td className="px-6 py-4">{new Date(workspace.created_at).toLocaleDateString()}</td>
                                             <td className="px-6 py-4">
                                                 <Link 
-                                                    href={`/admin/workspaces/${workspace.id}`}
+                                                    href={`/admin/projects/${workspace.id}`}
                                                     className="font-medium text-blue-600 hover:underline"
                                                 >
                                                     Review
@@ -73,7 +73,7 @@ AdminWorkspacesIndex.layout = {
         },
         {
             title: 'Client Requests',
-            href: '/admin/workspaces',
+            href: '/admin/projects',
         },
     ],
 };
