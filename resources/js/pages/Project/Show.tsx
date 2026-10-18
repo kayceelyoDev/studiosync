@@ -95,6 +95,20 @@ interface ProjectData {
     } | null;
 }
 
+function getPublicLiveUrl(p: { project_url?: string | null; vercel_project_name?: string | null }): string | null {
+    if (p.vercel_project_name) {
+        return `https://${p.vercel_project_name}.vercel.app`;
+    }
+    if (p.project_url) {
+        const match = p.project_url.match(/https?:\/\/([a-z0-9-]+?)-[a-z0-9]{8,}-[a-z0-9-]+\.vercel\.app/i);
+        if (match && match[1]) {
+            return `https://${match[1]}.vercel.app`;
+        }
+        return p.project_url;
+    }
+    return null;
+}
+
 export default function ProjectShow({ project }: { project: ProjectData }) {
     const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code' | 'contact'>('preview');
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -107,7 +121,7 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
     const isDeploying = project.deployment_status === 'deploying';
     const isLocked = isDeployed || isDeploying;
 
-    const liveUrl = project.project_url || (project.vercel_project_name ? `https://${project.vercel_project_name}.vercel.app` : null);
+    const liveUrl = getPublicLiveUrl(project);
     const assetsList = project.project_assets || project.projectAssets || [];
     const deploymentsList = project.deployments || [];
     const emailer = project.contact_emailer || project.contactEmailer;

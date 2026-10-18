@@ -38,6 +38,20 @@ interface Project {
     created_at: string;
 }
 
+function getPublicLiveUrl(project: { project_url?: string | null; vercel_project_name?: string | null }): string | null {
+    if (project.vercel_project_name) {
+        return `https://${project.vercel_project_name}.vercel.app`;
+    }
+    if (project.project_url) {
+        const match = project.project_url.match(/https?:\/\/([a-z0-9-]+?)-[a-z0-9]{8,}-[a-z0-9-]+\.vercel\.app/i);
+        if (match && match[1]) {
+            return `https://${match[1]}.vercel.app`;
+        }
+        return project.project_url;
+    }
+    return null;
+}
+
 export default function ShowWorkspace({ workspace, projects = [] }: { workspace: Workspace; projects: Project[] }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'deployed' | 'draft'>('all');
@@ -254,7 +268,7 @@ export default function ShowWorkspace({ workspace, projects = [] }: { workspace:
                         {filteredProjects.map((project) => {
                             const isDeployed = project.deployment_status === 'deployed' || project.status === 'deployed';
                             const isDeploying = project.deployment_status === 'deploying';
-                            const liveUrl = project.project_url || (project.vercel_project_name ? `https://${project.vercel_project_name}.vercel.app` : null);
+                            const liveUrl = getPublicLiveUrl(project);
 
                             return (
                                 <div

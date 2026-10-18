@@ -471,6 +471,17 @@ export default function ProjectEdit({
 
     const [subdomain, setSubdomain] = useState<string>(initialSubdomain);
 
+    const canonicalLiveUrl = useMemo(() => {
+        if (project.vercel_project_name) return `https://${project.vercel_project_name}.vercel.app`;
+        const url = projectUrl || project.project_url;
+        if (url) {
+            const match = url.match(/https?:\/\/([a-z0-9-]+?)-[a-z0-9]{8,}-[a-z0-9-]+\.vercel\.app/i);
+            if (match && match[1]) return `https://${match[1]}.vercel.app`;
+            return url;
+        }
+        return '';
+    }, [project.vercel_project_name, projectUrl, project.project_url]);
+
     const isLocked = deploymentStatus === 'deployed';
 
     // Poll deployment status when in 'deploying' state
@@ -4616,7 +4627,7 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
 
                     {deploymentStatus === 'deployed' ? (
                         <a
-                            href={projectUrl || project.project_url || '#'}
+                            href={canonicalLiveUrl || '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-950/50 transition-all flex items-center gap-1.5 cursor-pointer"
@@ -4661,18 +4672,18 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                         <span className="font-medium">
                             <strong>Website Live on Vercel:</strong>{' '}
                             <a
-                                href={projectUrl || project.project_url || '#'}
+                                href={canonicalLiveUrl || '#'}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="underline font-semibold text-emerald-300 hover:text-white"
                             >
-                                {projectUrl || project.project_url}
+                                {canonicalLiveUrl}
                             </a>
                             {' '}— This website has been published and is permanently locked from further editing.
                         </span>
                     </div>
                     <a
-                        href={projectUrl || project.project_url || '#'}
+                        href={canonicalLiveUrl || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-medium flex items-center gap-1 text-[11px] transition-colors"

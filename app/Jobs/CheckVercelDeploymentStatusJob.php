@@ -51,23 +51,33 @@ class CheckVercelDeploymentStatusJob implements ShouldQueue
             $readyState = strtoupper((string) ($data['readyState'] ?? ''));
 
             if ($readyState === 'READY') {
-                $deploymentUrl = 'https://'.ltrim((string) ($data['url'] ?? ''), '/');
+                $rawDeploymentUrl = 'https://'.ltrim((string) ($data['url'] ?? ''), '/');
+                $project = Project::find($deployment->project_id);
+
+                $canonicalUrl = null;
+                if (! empty($data['alias']) && is_array($data['alias']) && count($data['alias']) > 0) {
+                    $canonicalUrl = 'https://'.ltrim($data['alias'][0], '/');
+                } elseif ($project && ! empty($project->vercel_project_name)) {
+                    $canonicalUrl = "https://{$project->vercel_project_name}.vercel.app";
+                }
+
+                $publicLiveUrl = $canonicalUrl ?? $rawDeploymentUrl;
+
                 $deployment->update([
                     'status' => DeploymentStatus::Ready->value,
-                    'url' => $deploymentUrl,
+                    'url' => $publicLiveUrl,
                 ]);
 
-                $project = Project::find($deployment->project_id);
                 if ($project) {
                     $project->update([
                         'deployment_status' => DeploymentStatus::Deployed->value,
                         'status' => ProjectStatus::Deployed->value,
-                        'project_url' => $deploymentUrl,
+                        'project_url' => $publicLiveUrl,
                         'deployed_at' => now(),
                     ]);
                 }
 
-                Log::info("Vercel deployment {$deployment->vercel_deployment_id} verified READY via status job.");
+                Log::info("Vercel deployment {$deployment->vercel_deployment_id} verified READY via status job: {$publicLiveUrl}");
 
                 return;
             }
