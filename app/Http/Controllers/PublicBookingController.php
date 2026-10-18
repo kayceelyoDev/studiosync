@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\NewBookingNotification;
 use App\Models\Booking;
+use App\Models\BookingAccessToken;
 use App\Models\BookingService;
 use App\Models\Project;
 use App\Services\BookingAvailabilityService;
@@ -18,6 +19,31 @@ use Inertia\Response;
 
 class PublicBookingController extends Controller
 {
+    /**
+     * Dedicated entry point: generates a fresh, expiring session token dedicated
+     * to this project on each guest visit/click and redirects into the portal.
+     */
+    public function entry(Request $request, string $token): RedirectResponse
+    {
+        $project = Project::where('booking_public_token', $token)
+            ->whereNotNull('booking_public_token')
+            ->where('booking_enabled', true)
+            ->first();
+
+        if (! $project) {
+            abort(404, 'Booking portal not found or inactive.');
+        }
+
+        $session = BookingAccessToken::createForProject(
+            $project,
+            now()->addMinutes(60),
+            $request->ip(),
+            $request->userAgent()
+        );
+
+        return redirect()->route('booking.public.show', ['token' => $session->token]);
+    }
+
     /**
      * Show the public booking portal for an authorized project.
      */

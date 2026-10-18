@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\ClientRequestController as AdminClientRequestCont
 use App\Http\Controllers\Admin\ContactEmailerController as AdminContactEmailerController;
 use App\Http\Controllers\AdminWorkspaceController;
 use App\Http\Controllers\BookingRequestController;
+use App\Http\Controllers\ClientBookingDashboardController;
 use App\Http\Controllers\ClientRequestCommentController;
 use App\Http\Controllers\ClientRequestController;
 use App\Http\Controllers\ContactFormController;
@@ -27,6 +28,10 @@ Route::inertia('/', 'welcome')->name('home');
 | Public Guest Booking Routes (Secured & isolated by token & middleware)
 |--------------------------------------------------------------------------
 */
+Route::get('/book/entry/{token}', [PublicBookingController::class, 'entry'])
+    ->middleware('throttle:60,1')
+    ->name('booking.public.entry');
+
 Route::prefix('book/{token}')->middleware(['EnsureProjectBookingEnabled'])->group(function () {
     Route::get('/', [PublicBookingController::class, 'show'])->name('booking.public.show');
     Route::get('/slots', [PublicBookingController::class, 'slots'])
@@ -79,6 +84,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/projects/{project}/contact-messages', [ContactMessageController::class, 'index'])
         ->name('projects.contact-messages.index');
 
+    // Centralized Client Bookings Hub
+    Route::get('/bookings', [ClientBookingDashboardController::class, 'index'])->name('bookings.index');
+    Route::patch('/bookings/{booking}/status', [ClientBookingDashboardController::class, 'updateStatus'])->name('bookings.status');
+
     // Booking routes for Project owner
     Route::post('/projects/{project}/booking-request', [BookingRequestController::class, 'store'])->name('projects.booking-request.store');
     Route::get('/projects/{project}/booking', [ProjectBookingController::class, 'index'])->name('projects.booking.index');
@@ -87,6 +96,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/projects/{project}/booking/services/{service}', [ProjectBookingServiceController::class, 'update'])->name('projects.booking.services.update');
     Route::delete('/projects/{project}/booking/services/{service}', [ProjectBookingServiceController::class, 'destroy'])->name('projects.booking.services.destroy');
     Route::put('/projects/{project}/booking/settings', [ProjectBookingSettingsController::class, 'update'])->name('projects.booking.settings.update');
+    Route::post('/projects/{project}/booking/inject-cta', [ProjectBookingController::class, 'injectBookingCta'])->name('projects.booking.inject-cta');
+    Route::post('/projects/{project}/booking/remove-cta', [ProjectBookingController::class, 'removeBookingCta'])->name('projects.booking.remove-cta');
+    Route::post('/projects/{project}/booking/rotate-token', [ProjectBookingController::class, 'rotateBookingToken'])->name('projects.booking.rotate-token');
+    Route::post('/projects/{project}/booking/generate-link', [ProjectBookingController::class, 'generateShareableLink'])->name('projects.booking.generate-link');
 });
 
 /*
@@ -136,6 +149,10 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
     // Admin Booking Feature Management
     Route::post('/projects/{project}/booking/initialize', [AdminWorkspaceController::class, 'initializeBooking'])->name('projects.booking.initialize');
     Route::patch('/projects/{project}/booking/toggle', [AdminWorkspaceController::class, 'toggleBooking'])->name('projects.booking.toggle');
+    Route::post('/projects/{project}/booking/inject-cta', [AdminWorkspaceController::class, 'injectBookingCta'])->name('projects.booking.inject-cta');
+    Route::post('/projects/{project}/booking/remove-cta', [AdminWorkspaceController::class, 'removeBookingCta'])->name('projects.booking.remove-cta');
+    Route::post('/projects/{project}/booking/rotate-token', [AdminWorkspaceController::class, 'rotateBookingToken'])->name('projects.booking.rotate-token');
+    Route::put('/projects/{project}/booking/services', [AdminWorkspaceController::class, 'updateServices'])->name('projects.booking.services.update');
 });
 
 /*

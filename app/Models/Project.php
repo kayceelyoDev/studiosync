@@ -100,6 +100,11 @@ class Project extends Model
         return $this->hasMany(ClientRequest::class);
     }
 
+    public function accessTokens(): HasMany
+    {
+        return $this->hasMany(BookingAccessToken::class);
+    }
+
     public function hasBookingEnabled(): bool
     {
         return (bool) $this->booking_enabled;

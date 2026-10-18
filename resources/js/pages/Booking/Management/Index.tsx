@@ -19,7 +19,11 @@ import {
     Settings,
     Layers,
     Code,
-    AlertCircle
+    AlertCircle,
+    Key,
+    ShieldCheck,
+    RefreshCw,
+    Share2
 } from 'lucide-react';
 
 interface BookingService {
@@ -70,14 +74,28 @@ interface BookingManagementProps {
         last_page: number;
         total: number;
     };
+    hasBookingCta?: boolean;
+    embedSnippet?: string;
+    recentTokens?: Array<{
+        id: number;
+        token: string;
+        expires_at: string;
+        is_revoked: boolean;
+        access_count: number;
+        last_accessed_at?: string | null;
+        created_at: string;
+    }>;
 }
 
 export default function BookingManagementIndex({
     project,
     services,
     bookings,
+    hasBookingCta = false,
+    embedSnippet: propEmbedSnippet,
+    recentTokens = [],
 }: BookingManagementProps) {
-    const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'settings'>('appointments');
+    const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'settings' | 'integration'>('appointments');
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
     const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
 
@@ -85,16 +103,27 @@ export default function BookingManagementIndex({
     const [serviceModalOpen, setServiceModalOpen] = useState<boolean>(false);
     const [editingService, setEditingService] = useState<BookingService | null>(null);
 
-    const publicUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/book/${project.booking_public_token}`
-        : `/book/${project.booking_public_token}`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const publicUrl = project.booking_public_token ? `${origin}/book/${project.booking_public_token}` : '';
+    const entryUrl = project.booking_public_token ? `${origin}/book/entry/${project.booking_public_token}` : '';
+    const [copiedEntryUrl, setCopiedEntryUrl] = useState<boolean>(false);
 
-    const embedSnippet = `<a href="${publicUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 24px;background-color:#18181b;color:#ffffff;border-radius:8px;font-weight:600;text-decoration:none;">Book Appointment</a>`;
+    const embedSnippet = propEmbedSnippet || `<a href="${entryUrl}" class="ss-booking-cta-btn" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background-color:#10b981;color:#ffffff;font-size:14px;font-weight:600;border-radius:8px;text-decoration:none;">Book Appointment</a>`;
+
+    const [actionLoading, setActionLoading] = useState<boolean>(false);
+    const [shareDuration, setShareDuration] = useState<number>(24);
+    const [copiedShareLink, setCopiedShareLink] = useState<boolean>(false);
 
     const copyPublicUrl = () => {
         navigator.clipboard.writeText(publicUrl);
         setCopiedUrl(true);
         setTimeout(() => setCopiedUrl(false), 2000);
+    };
+
+    const copyEntryUrl = () => {
+        navigator.clipboard.writeText(entryUrl);
+        setCopiedEntryUrl(true);
+        setTimeout(() => setCopiedEntryUrl(false), 2000);
     };
 
     const copyEmbedSnippet = () => {
@@ -142,7 +171,7 @@ export default function BookingManagementIndex({
     const handleServiceSubmit = (e: FormEvent) => {
         e.preventDefault();
         if (editingService) {
-            serviceForm.patch(`/projects/${project.id}/booking/services/${editingService.id}`, {
+            serviceForm.put(`/projects/${project.id}/booking/services/${editingService.id}`, {
                 onSuccess: () => setServiceModalOpen(false),
             });
         } else {
@@ -159,10 +188,57 @@ export default function BookingManagementIndex({
     };
 
     const updateBookingStatus = (bookingId: number, status: 'completed' | 'cancelled') => {
-        const reason = status === 'cancelled' ? prompt('Optional cancellation reason:') : null;
-        router.patch(`/projects/${project.id}/booking/appointments/${bookingId}/status`, {
+        let reason: string | null = null;
+        if (status === 'cancelled') {
+            const promptVal = prompt('Cancel appointment? Enter optional cancellation reason (or click Cancel to abort):');
+            if (promptVal === null) {
+                return;
+            }
+            reason = promptVal.trim() || null;
+        } else if (status === 'completed') {
+            if (!confirm('Mark appointment as completed?')) {
+                return;
+            }
+        }
+
+        router.patch(`/projects/${project.id}/booking/${bookingId}/status`, {
             status,
             cancellation_reason: reason,
+        });
+    };
+
+    const handleInjectCta = () => {
+        setActionLoading(true);
+        router.post(`/projects/${project.id}/booking/inject-cta`, {}, {
+            onFinish: () => setActionLoading(false),
+        });
+    };
+
+    const handleRemoveCta = () => {
+        if (confirm('Remove the booking button from your live website HTML?')) {
+            setActionLoading(true);
+            router.post(`/projects/${project.id}/booking/remove-cta`, {}, {
+                onFinish: () => setActionLoading(false),
+            });
+        }
+    };
+
+    const handleRotateKey = () => {
+        if (confirm('Rotate your dedicated project booking key? Note: Old static links will be invalidated, but your live website CTA will be updated automatically.')) {
+            setActionLoading(true);
+            router.post(`/projects/${project.id}/booking/rotate-token`, {}, {
+                onFinish: () => setActionLoading(false),
+            });
+        }
+    };
+
+    const handleGenerateShareLink = (e: FormEvent) => {
+        e.preventDefault();
+        setActionLoading(true);
+        router.post(`/projects/${project.id}/booking/generate-link`, {
+            duration_hours: shareDuration,
+        }, {
+            onFinish: () => setActionLoading(false),
         });
     };
 
@@ -178,7 +254,7 @@ export default function BookingManagementIndex({
 
     const handleSettingsSubmit = (e: FormEvent) => {
         e.preventDefault();
-        settingsForm.patch(`/projects/${project.id}/booking/settings`, {
+        settingsForm.put(`/projects/${project.id}/booking/settings`, {
             preserveScroll: true,
         });
     };
@@ -324,6 +400,18 @@ export default function BookingManagementIndex({
                     >
                         <Settings className="w-3.5 h-3.5" />
                         <span>Schedule Settings</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('integration')}
+                        className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                            activeTab === 'integration'
+                                ? 'bg-primary text-primary-foreground shadow-xs'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                    >
+                        <Code className="w-3.5 h-3.5" />
+                        <span>Website Code & Security</span>
                     </button>
                 </div>
 
@@ -621,6 +709,236 @@ export default function BookingManagementIndex({
                             </button>
                         </div>
                     </form>
+                )}
+
+                {/* TAB 4: WEBSITE CODE & SECURITY */}
+                {activeTab === 'integration' && (
+                    <div className="space-y-6">
+                        {/* Section 1: Website Code Injection */}
+                        <div className="p-6 bg-card border border-border rounded-xl shadow-xs space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Code className="w-4 h-4 text-primary" />
+                                        <h3 className="font-bold text-foreground text-sm">
+                                            Website Code Injection
+                                        </h3>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        Automatically inject or manage the &quot;Book Now&quot; CTA link inside your website's HTML navigation or header.
+                                    </p>
+                                </div>
+                                <span
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold border shrink-0 ${
+                                        hasBookingCta
+                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                            : 'bg-muted border-border text-muted-foreground'
+                                    }`}
+                                >
+                                    {hasBookingCta ? 'Injected in Live HTML' : 'Not Injected in HTML'}
+                                </span>
+                            </div>
+
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                When enabled, StudioSync automatically inserts a styled, responsive appointment booking button into your website's navigation bar or header. Visitors can click it anytime to schedule appointments directly.
+                            </p>
+
+                            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                                <button
+                                    type="button"
+                                    disabled={actionLoading}
+                                    onClick={handleInjectCta}
+                                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-colors flex items-center gap-2"
+                                >
+                                    <Code className="w-3.5 h-3.5" />
+                                    <span>{hasBookingCta ? 'Re-inject / Update Code CTA' : 'Inject Booking Button into Website Code'}</span>
+                                </button>
+
+                                {hasBookingCta && (
+                                    <button
+                                        type="button"
+                                        disabled={actionLoading}
+                                        onClick={handleRemoveCta}
+                                        className="px-4 py-2 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
+                                    >
+                                        Remove Button from Code
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={copyEmbedSnippet}
+                                    className="px-4 py-2 text-xs font-medium rounded-lg bg-background border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1.5 shadow-xs"
+                                >
+                                    {copiedSnippet ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                    <span>{copiedSnippet ? 'Copied HTML!' : 'Copy Manual Embed Code'}</span>
+                                </button>
+                            </div>
+
+                            {/* Embed Snippet Preview */}
+                            <div className="space-y-1.5 pt-2">
+                                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Embed HTML Markup:
+                                </div>
+                                <pre className="p-3 bg-muted/50 border border-border rounded-lg text-[11px] font-mono text-muted-foreground overflow-x-auto select-all">
+                                    {embedSnippet}
+                                </pre>
+                            </div>
+                        </div>
+
+                        {/* Section 2: Dynamic / Expiring Access Tokens & Key Rotation */}
+                        <div className="p-6 bg-card border border-border rounded-xl shadow-xs space-y-5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                        <h3 className="font-bold text-foreground text-sm">
+                                            Dynamic Session Security & Link Rotation
+                                        </h3>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        Each time a guest clicks your website link, a dedicated temporary session key is generated automatically.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={actionLoading}
+                                    onClick={handleRotateKey}
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-muted hover:bg-accent text-foreground border border-border transition-colors flex items-center gap-1.5 shrink-0"
+                                    title="Rotate project dedicated master token"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <span>Rotate Master Key</span>
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Dynamic Entry Link */}
+                                <div className="p-4 rounded-xl bg-muted/30 border border-border space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-foreground">
+                                            Dynamic Guest Entry URL
+                                        </span>
+                                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500">
+                                            Auto-Expiring
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                        This is the permanent entry link on your website. When clicked, it generates a fresh, dedicated 60-minute guest session.
+                                    </p>
+                                    <div className="flex items-center gap-1.5 pt-1">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={entryUrl}
+                                            className="flex-1 px-2.5 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground font-mono select-all truncate"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={copyEntryUrl}
+                                            className="p-2 text-xs rounded-lg bg-card border border-border hover:bg-muted text-foreground transition-colors shrink-0"
+                                            title="Copy Entry URL"
+                                        >
+                                            {copiedEntryUrl ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                        </button>
+                                        <a
+                                            href={entryUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="p-2 text-xs rounded-lg bg-card border border-border hover:bg-muted text-foreground transition-colors shrink-0"
+                                            title="Open Entry Link"
+                                        >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                        </a>
+                                    </div>
+                                </div>
+
+                                {/* Generate Custom Expiring Link */}
+                                <div className="p-4 rounded-xl bg-muted/30 border border-border space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-foreground">
+                                            Generate Shareable Expiring Link
+                                        </span>
+                                        <Share2 className="w-3.5 h-3.5 text-primary" />
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                        Generate a single-use time-limited link to share directly with a VIP client via email or message.
+                                    </p>
+                                    <form onSubmit={handleGenerateShareLink} className="flex items-center gap-2 pt-1">
+                                        <select
+                                            value={shareDuration}
+                                            onChange={(e) => setShareDuration(Number(e.target.value))}
+                                            className="px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                        >
+                                            <option value={1}>Valid for 1 Hour</option>
+                                            <option value={24}>Valid for 24 Hours</option>
+                                            <option value={72}>Valid for 3 Days</option>
+                                            <option value={168}>Valid for 7 Days</option>
+                                        </select>
+                                        <button
+                                            type="submit"
+                                            disabled={actionLoading}
+                                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs transition-colors shrink-0"
+                                        >
+                                            Generate Link
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+
+                            {/* Recent Access Tokens Log */}
+                            {recentTokens && recentTokens.length > 0 && (
+                                <div className="space-y-2 pt-2">
+                                    <div className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                                        Recent Guest Access Sessions ({recentTokens.length})
+                                    </div>
+                                    <div className="rounded-lg border border-border overflow-hidden">
+                                        <table className="w-full text-xs text-left">
+                                            <thead className="bg-muted/40 text-[11px] text-muted-foreground uppercase border-b border-border">
+                                                <tr>
+                                                    <th className="px-4 py-2 font-medium">Session Token</th>
+                                                    <th className="px-4 py-2 font-medium">Created</th>
+                                                    <th className="px-4 py-2 font-medium">Expires</th>
+                                                    <th className="px-4 py-2 font-medium">Visits</th>
+                                                    <th className="px-4 py-2 font-medium text-right">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border">
+                                                {recentTokens.map((t) => {
+                                                    const isExpired = new Date(t.expires_at) <= new Date() || t.is_revoked;
+                                                    return (
+                                                        <tr key={t.id} className="hover:bg-muted/20">
+                                                            <td className="px-4 py-2.5 font-mono text-[11px] text-foreground">
+                                                                {t.token.slice(0, 16)}...
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-muted-foreground text-[11px]">
+                                                                {new Date(t.created_at).toLocaleString()}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-muted-foreground text-[11px]">
+                                                                {new Date(t.expires_at).toLocaleString()}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-foreground font-semibold">
+                                                                {t.access_count}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right">
+                                                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                                                    !isExpired
+                                                                        ? 'bg-emerald-500/10 text-emerald-500'
+                                                                        : 'bg-muted text-muted-foreground'
+                                                                }`}>
+                                                                    {!isExpired ? 'Active' : 'Expired'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
 
