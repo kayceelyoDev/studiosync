@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckRoleMiddleware;
+use App\Http\Middleware\EnsureProjectBookingEnabled;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -32,6 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => CheckRoleMiddleware::class,
+            'EnsureProjectBookingEnabled' => EnsureProjectBookingEnabled::class,
+            'booking.enabled' => EnsureProjectBookingEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

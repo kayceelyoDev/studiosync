@@ -22,8 +22,10 @@ import {
     Clock,
     AlertCircle,
     Rocket,
-    Send
+    Send,
+    ShieldCheck
 } from 'lucide-react';
+import { router } from '@inertiajs/react';
 
 interface ProjectAsset {
     id: number;
@@ -76,6 +78,14 @@ interface AdminProjectData {
         is_active: boolean;
         messages_count?: number;
     } | null;
+    booking_enabled?: boolean;
+    booking_public_token?: string | null;
+    booking_notification_email?: string | null;
+    booking_settings?: any;
+    booking_services?: any[];
+    bookingServices?: any[];
+    client_requests?: any[];
+    clientRequests?: any[];
 }
 
 export default function AdminWorkspacesShow({ workspace }: { workspace: AdminProjectData }) {
@@ -84,6 +94,38 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+    const [togglingBooking, setTogglingBooking] = useState<boolean>(false);
+    const [initializingBooking, setInitializingBooking] = useState<boolean>(false);
+
+    const pendingBookingReq = useMemo(() => {
+        const reqs = workspace.client_requests || workspace.clientRequests || [];
+        return reqs.find((r: any) => r.category === 'booking_system' && r.status === 'pending');
+    }, [workspace.client_requests, workspace.clientRequests]);
+
+    const intakePayload = useMemo(() => {
+        if (!pendingBookingReq?.description) return null;
+        try {
+            return JSON.parse(pendingBookingReq.description);
+        } catch (e) {
+            return null;
+        }
+    }, [pendingBookingReq]);
+
+    const handleToggleBooking = () => {
+        setTogglingBooking(true);
+        router.patch(`/admin/projects/${workspace.id}/booking/toggle`, {}, {
+            onFinish: () => setTogglingBooking(false),
+        });
+    };
+
+    const handleInitializeBooking = () => {
+        if (confirm('Approve and initialize the booking system for this project?')) {
+            setInitializingBooking(true);
+            router.post(`/admin/projects/${workspace.id}/booking/initialize`, {}, {
+                onFinish: () => setInitializingBooking(false),
+            });
+        }
+    };
 
     const { data, setData, put, processing, errors } = useForm({
         status: workspace.status || 'pending',
@@ -502,6 +544,103 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                     <Mail className="w-4 h-4" />
                                     {workspace.contact_emailer ? 'Manage & Deploy Emailer' : 'Configure Emailer'}
                                 </Link>
+                            </div>
+
+                            {/* Booking Feature Admin Panel */}
+                            <div className="bg-card rounded-xl border border-border shadow-xs p-5 space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b border-border">
+                                    <div className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-primary" />
+                                        <h3 className="font-semibold text-foreground text-xs uppercase tracking-wider">
+                                            Booking System Feature
+                                        </h3>
+                                    </div>
+                                    <span
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                            workspace.booking_enabled
+                                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                                : 'bg-muted border-border text-muted-foreground'
+                                        }`}
+                                    >
+                                        {workspace.booking_enabled ? 'Active' : 'Disabled'}
+                                    </span>
+                                </div>
+
+                                {/* Pending Request Banner */}
+                                {pendingBookingReq && intakePayload && (
+                                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-3">
+                                        <div className="flex items-center gap-2 text-xs font-semibold text-amber-500">
+                                            <AlertCircle className="w-3.5 h-3.5" />
+                                            <span>Client Booking Request Submitted</span>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground space-y-1">
+                                            <p>• Alert Email: <span className="text-foreground font-mono">{intakePayload.notification_email || workspace.user?.email}</span></p>
+                                            <p>• Services Count: <span className="text-foreground font-semibold">{intakePayload.services?.length || 0}</span></p>
+                                            {intakePayload.services && intakePayload.services.length > 0 && (
+                                                <ul className="pl-3 list-disc text-[11px] space-y-0.5 mt-1">
+                                                    {intakePayload.services.map((svc: any, idx: number) => (
+                                                        <li key={idx}>
+                                                            {svc.name} (${Number(svc.price).toFixed(2)}, {svc.duration_minutes}m)
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            disabled={initializingBooking}
+                                            onClick={handleInitializeBooking}
+                                            className="w-full py-2 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                                        >
+                                            <ShieldCheck className="w-3.5 h-3.5" />
+                                            <span>{initializingBooking ? 'Initializing...' : 'Approve & Initialize Booking'}</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Token & Quick Links (if enabled) */}
+                                {workspace.booking_enabled && workspace.booking_public_token && (
+                                    <div className="space-y-2">
+                                        <div className="text-[11px] text-muted-foreground">Public Token:</div>
+                                        <div className="flex items-center gap-1.5">
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={workspace.booking_public_token}
+                                                className="flex-1 px-2.5 py-1.5 text-xs bg-muted/60 border border-border rounded-lg text-foreground font-mono select-all truncate"
+                                            />
+                                            <a
+                                                href={`/book/${workspace.booking_public_token}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="p-1.5 text-xs font-medium rounded-lg bg-muted border border-border hover:text-foreground text-muted-foreground transition-colors"
+                                                title="Open Booking Portal"
+                                            >
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Toggle Button */}
+                                <div>
+                                    <button
+                                        type="button"
+                                        disabled={togglingBooking}
+                                        onClick={handleToggleBooking}
+                                        className={`w-full py-2 px-3 text-xs font-semibold rounded-lg border transition-colors ${
+                                            workspace.booking_enabled
+                                                ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
+                                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
+                                        }`}
+                                    >
+                                        {togglingBooking
+                                            ? 'Updating Status...'
+                                            : workspace.booking_enabled
+                                            ? 'Revoke / Disable Booking System'
+                                            : 'Enable Booking System'}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Audit Metadata Card */}

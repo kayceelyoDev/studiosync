@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 
 class Project extends Model
 {
@@ -31,6 +32,10 @@ class Project extends Model
         'deployment_status',
         'deployed_at',
         'content_hash',
+        'booking_enabled',
+        'booking_public_token',
+        'booking_notification_email',
+        'booking_settings',
     ];
 
     protected function casts(): array
@@ -40,6 +45,8 @@ class Project extends Model
             'deployed_at' => 'datetime',
             'status' => ProjectStatus::class,
             'deployment_status' => DeploymentStatus::class,
+            'booking_enabled' => 'boolean',
+            'booking_settings' => 'array',
         ];
     }
 
@@ -76,6 +83,31 @@ class Project extends Model
     public function contactEmailer(): HasOne
     {
         return $this->hasOne(ContactEmailer::class);
+    }
+
+    public function bookingServices(): HasMany
+    {
+        return $this->hasMany(BookingService::class);
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
+
+    public function clientRequests(): HasMany
+    {
+        return $this->hasMany(ClientRequest::class);
+    }
+
+    public function hasBookingEnabled(): bool
+    {
+        return (bool) $this->booking_enabled;
+    }
+
+    public static function generateBookingToken(): string
+    {
+        return 'bk_live_'.Str::random(32);
     }
 
     public function isDeployed(): bool

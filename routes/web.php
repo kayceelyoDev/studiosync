@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ClientRequestCommentController as AdminClientRequ
 use App\Http\Controllers\Admin\ClientRequestController as AdminClientRequestController;
 use App\Http\Controllers\Admin\ContactEmailerController as AdminContactEmailerController;
 use App\Http\Controllers\AdminWorkspaceController;
+use App\Http\Controllers\BookingRequestController;
 use App\Http\Controllers\ClientRequestCommentController;
 use App\Http\Controllers\ClientRequestController;
 use App\Http\Controllers\ContactFormController;
@@ -11,11 +12,32 @@ use App\Http\Controllers\ContactMessageController;
 use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\GenerateAiPromtPage;
 use App\Http\Controllers\ProjectAssetController;
+use App\Http\Controllers\ProjectBookingController;
+use App\Http\Controllers\ProjectBookingServiceController;
+use App\Http\Controllers\ProjectBookingSettingsController;
+use App\Http\Controllers\PublicBookingController;
 use App\Http\Controllers\VercelWebhookController;
 use App\Models\Project;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
+
+/*
+|--------------------------------------------------------------------------
+| Public Guest Booking Routes (Secured & isolated by token & middleware)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('book/{token}')->middleware(['EnsureProjectBookingEnabled'])->group(function () {
+    Route::get('/', [PublicBookingController::class, 'show'])->name('booking.public.show');
+    Route::get('/slots', [PublicBookingController::class, 'slots'])
+        ->middleware('throttle:30,1')
+        ->name('booking.public.slots');
+    Route::post('/reserve', [PublicBookingController::class, 'store'])
+        ->middleware('throttle:5,10')
+        ->name('booking.public.reserve');
+    Route::get('/confirmation/{uuid}', [PublicBookingController::class, 'confirmation'])
+        ->name('booking.public.confirmation');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -56,6 +78,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Client Contact Messages
     Route::get('/projects/{project}/contact-messages', [ContactMessageController::class, 'index'])
         ->name('projects.contact-messages.index');
+
+    // Booking routes for Project owner
+    Route::post('/projects/{project}/booking-request', [BookingRequestController::class, 'store'])->name('projects.booking-request.store');
+    Route::get('/projects/{project}/booking', [ProjectBookingController::class, 'index'])->name('projects.booking.index');
+    Route::patch('/projects/{project}/booking/{booking}/status', [ProjectBookingController::class, 'updateBookingStatus'])->name('projects.booking.status');
+    Route::post('/projects/{project}/booking/services', [ProjectBookingServiceController::class, 'store'])->name('projects.booking.services.store');
+    Route::put('/projects/{project}/booking/services/{service}', [ProjectBookingServiceController::class, 'update'])->name('projects.booking.services.update');
+    Route::delete('/projects/{project}/booking/services/{service}', [ProjectBookingServiceController::class, 'destroy'])->name('projects.booking.services.destroy');
+    Route::put('/projects/{project}/booking/settings', [ProjectBookingSettingsController::class, 'update'])->name('projects.booking.settings.update');
 });
 
 /*
@@ -81,7 +112,6 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
     Route::get('/projects', [AdminWorkspaceController::class, 'index'])->name('projects.index');
     Route::get('/projects/{project}', [AdminWorkspaceController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [AdminWorkspaceController::class, 'update'])->name('projects.update');
-
     // Compatibility redirects
     Route::get('/workspaces', fn () => redirect()->route('admin.projects.index'));
     Route::get('/workspaces/{project}', fn (Project $project) => redirect()->route('admin.projects.show', $project));
@@ -102,6 +132,10 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
         ->parameters(['requests' => 'clientRequest']);
     Route::post('/requests/{clientRequest}/comments', [AdminClientRequestCommentController::class, 'store'])
         ->name('requests.comments.store');
+
+    // Admin Booking Feature Management
+    Route::post('/projects/{project}/booking/initialize', [AdminWorkspaceController::class, 'initializeBooking'])->name('projects.booking.initialize');
+    Route::patch('/projects/{project}/booking/toggle', [AdminWorkspaceController::class, 'toggleBooking'])->name('projects.booking.toggle');
 });
 
 /*

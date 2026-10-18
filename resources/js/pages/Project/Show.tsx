@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Head, Link, setLayoutProps } from '@inertiajs/react';
+import { Head, Link, setLayoutProps, usePage } from '@inertiajs/react';
 import {
     ChevronLeft,
     MonitorSmartphone,
@@ -33,7 +33,9 @@ import {
     Newspaper,
     Grid,
     Wrench,
+    ShieldCheck
 } from 'lucide-react';
+import RequestModal from '../Booking/Client/RequestModal';
 
 interface ProjectAsset {
     id: number;
@@ -93,6 +95,14 @@ interface ProjectData {
         is_active: boolean;
         messages_count?: number;
     } | null;
+    booking_enabled?: boolean;
+    booking_public_token?: string | null;
+    booking_notification_email?: string | null;
+    booking_settings?: any;
+    booking_services?: any[];
+    bookingServices?: any[];
+    client_requests?: any[];
+    clientRequests?: any[];
 }
 
 function getPublicLiveUrl(p: { project_url?: string | null; vercel_project_name?: string | null }): string | null {
@@ -110,7 +120,7 @@ function getPublicLiveUrl(p: { project_url?: string | null; vercel_project_name?
 }
 
 export default function ProjectShow({ project }: { project: ProjectData }) {
-    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code' | 'contact'>('preview');
+    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code' | 'contact' | 'booking'>('preview');
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
@@ -125,6 +135,35 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
     const assetsList = project.project_assets || project.projectAssets || [];
     const deploymentsList = project.deployments || [];
     const emailer = project.contact_emailer || project.contactEmailer;
+
+    const [isRequestModalOpen, setIsRequestModalOpen] = useState<boolean>(false);
+    const [copiedBookingUrl, setCopiedBookingUrl] = useState<boolean>(false);
+    const [copiedBookingSnippet, setCopiedBookingSnippet] = useState<boolean>(false);
+
+    const { auth } = usePage().props as any;
+    const currentUserEmail = auth?.user?.email || '';
+
+    const pendingBookingRequest = useMemo(() => {
+        const reqs = project.client_requests || project.clientRequests || [];
+        return reqs.find((r: any) => r.category === 'booking_system' && r.status === 'pending');
+    }, [project.client_requests, project.clientRequests]);
+
+    const pendingIntake = useMemo(() => {
+        if (!pendingBookingRequest?.description) return null;
+        try {
+            return JSON.parse(pendingBookingRequest.description);
+        } catch {
+            return null;
+        }
+    }, [pendingBookingRequest]);
+
+    const bookingPublicUrl = project.booking_public_token
+        ? (typeof window !== 'undefined' ? `${window.location.origin}/book/${project.booking_public_token}` : `/book/${project.booking_public_token}`)
+        : '';
+
+    const bookingEmbedSnippet = bookingPublicUrl
+        ? `<a href="${bookingPublicUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 24px;background-color:#2563eb;color:#ffffff;border-radius:8px;font-weight:600;text-decoration:none;">Book Appointment</a>`
+        : '';
 
     // Set layout breadcrumbs
     setLayoutProps({
@@ -660,6 +699,24 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                     }`}>
                                         {emailer.is_active ? 'Active' : 'Inactive'}
                                     </span>
+                                )}
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('booking')}
+                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                                    activeTab === 'booking'
+                                        ? 'border-primary text-primary font-semibold'
+                                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                                }`}
+                            >
+                                <Calendar className="w-4 h-4" />
+                                Booking
+                                {project.booking_enabled && (
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                )}
+                                {pendingBookingRequest && !project.booking_enabled && (
+                                    <span className="w-2 h-2 rounded-full bg-amber-500" />
                                 )}
                             </button>
                         </div>
@@ -1207,8 +1264,219 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                         </div>
                     )}
 
+                    {/* TAB 7: BOOKING SYSTEM */}
+                    {activeTab === 'booking' && (
+                        <div className="space-y-6 animate-in fade-in">
+                            {project.booking_enabled ? (
+                                <div className="space-y-6">
+                                    {/* Active Booking Banner */}
+                                    <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-card to-card border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                    Booking System Active
+                                                </span>
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-foreground">
+                                                Direct Guest Reservations Enabled
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground max-w-xl">
+                                                Guests visiting your website can book appointments directly via your secured booking link. Appointments automatically reserve time slots in real time.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <Link
+                                                href={`/projects/${project.id}/booking`}
+                                                className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-md transition-all flex items-center gap-2"
+                                            >
+                                                <Calendar className="w-4 h-4" />
+                                                <span>Open Booking Hub</span>
+                                            </Link>
+                                            <a
+                                                href={bookingPublicUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="px-4 py-2.5 rounded-xl bg-card hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors flex items-center gap-2"
+                                            >
+                                                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                                                <span>Test Booking Portal</span>
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    {/* Portal Link & Embed CTA Section */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Direct Link */}
+                                        <div className="p-5 rounded-xl bg-card border border-border space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                                                    Public Booking Portal Link
+                                                </h4>
+                                                <span className="text-[11px] text-muted-foreground">Unguessable Secure Token</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    readOnly
+                                                    value={bookingPublicUrl}
+                                                    className="flex-1 px-3 py-2 text-xs bg-muted/50 border border-border rounded-lg text-foreground font-mono select-all"
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(bookingPublicUrl);
+                                                        setCopiedBookingUrl(true);
+                                                        setTimeout(() => setCopiedBookingUrl(false), 2000);
+                                                    }}
+                                                    className="px-3 py-2 text-xs font-medium rounded-lg bg-card border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1.5 shrink-0"
+                                                >
+                                                    {copiedBookingUrl ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                                                    <span>{copiedBookingUrl ? 'Copied' : 'Copy'}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Website CTA Code */}
+                                        <div className="p-5 rounded-xl bg-card border border-border space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                                                    Embed "Book Now" Button
+                                                </h4>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(bookingEmbedSnippet);
+                                                        setCopiedBookingSnippet(true);
+                                                        setTimeout(() => setCopiedBookingSnippet(false), 2000);
+                                                    }}
+                                                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                                                >
+                                                    {copiedBookingSnippet ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                                                    <span>{copiedBookingSnippet ? 'Copied Code!' : 'Copy Code'}</span>
+                                                </button>
+                                            </div>
+                                            <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-300 font-mono text-[11px] overflow-x-auto scrollbar-thin">
+                                                <code>{bookingEmbedSnippet}</code>
+                                            </pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : pendingBookingRequest ? (
+                                <div className="p-8 rounded-2xl bg-amber-500/5 border border-amber-500/20 text-center max-w-xl mx-auto space-y-4">
+                                    <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
+                                        <RotateCw className="w-6 h-6 animate-spin" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                            Request Under Admin Review
+                                        </span>
+                                        <h3 className="text-lg font-bold text-foreground mt-2">
+                                            Booking System Pending Activation
+                                        </h3>
+                                        <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                                            Your request is being configured by our admin team. Once approved, the booking portal and self-management hub will activate automatically.
+                                        </p>
+                                    </div>
+
+                                    {pendingIntake && (
+                                        <div className="p-4 rounded-xl bg-card border border-border text-left space-y-2 mt-4 text-xs">
+                                            <div className="font-semibold text-foreground flex items-center justify-between">
+                                                <span>Requested Configuration</span>
+                                                <span className="text-[11px] text-amber-500 font-medium">Pending Approval</span>
+                                            </div>
+                                            {pendingIntake.notification_email && (
+                                                <p className="text-muted-foreground">
+                                                    • Alert Email: <span className="font-mono text-foreground">{pendingIntake.notification_email}</span>
+                                                </p>
+                                            )}
+                                            {pendingIntake.services && pendingIntake.services.length > 0 && (
+                                                <div className="mt-2 space-y-1">
+                                                    <span className="text-[11px] text-muted-foreground uppercase font-semibold">
+                                                        Requested Services ({pendingIntake.services.length}):
+                                                    </span>
+                                                    <ul className="pl-4 list-disc text-muted-foreground space-y-0.5">
+                                                        {pendingIntake.services.map((svc: any, idx: number) => (
+                                                            <li key={idx}>
+                                                                <span className="text-foreground font-medium">{svc.name}</span>
+                                                                {' — '}${Number(svc.price).toFixed(2)} ({svc.duration_minutes} mins)
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-8 sm:p-12 rounded-2xl bg-card border border-border shadow-sm text-center max-w-2xl mx-auto space-y-6">
+                                    <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                                        <Calendar className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-xl font-bold text-foreground">
+                                            Add Direct Online Booking to {project.project_name}
+                                        </h3>
+                                        <p className="text-xs sm:text-sm text-muted-foreground max-w-lg mx-auto">
+                                            Allow visitors to view your services, check real-time open slots, and schedule appointments directly on your site.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                                            <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Dynamic Slots</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Zero double bookings. Automatically calculates availability.
+                                            </p>
+                                        </div>
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                                            <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Self-Managed</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Update service prices and durations at any time.
+                                            </p>
+                                        </div>
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                                            <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Instant Alerts</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Get notified immediately when a guest books a slot.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsRequestModalOpen(true)}
+                                            className="px-6 py-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm shadow-md transition-all inline-flex items-center gap-2"
+                                        >
+                                            <Calendar className="w-4 h-4" />
+                                            <span>Request Booking Feature</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </div>
+
+            {/* Client Booking Feature Request Modal */}
+            <RequestModal
+                projectId={project.id}
+                projectName={project.project_name}
+                userEmail={currentUserEmail}
+                isOpen={isRequestModalOpen}
+                onClose={() => setIsRequestModalOpen(false)}
+            />
         </>
     );
 }
