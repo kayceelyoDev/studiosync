@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RequestStatus;
 use App\Models\ClientRequest;
 use App\Models\Project;
 use App\Models\User;
@@ -117,7 +118,7 @@ test('admin can initialize and approve booking feature from pending request', fu
     expect($this->project->booking_enabled)->toBeTrue();
     expect($this->project->booking_public_token)->toStartWith('bk_live_');
     expect($this->project->booking_notification_email)->toBe('contact@spa.com');
-    expect($clientReq->status)->toBe('completed');
+    expect($clientReq->status)->toBe(RequestStatus::Completed);
     expect($clientReq->admin_id)->toBe($this->admin->id);
 
     // Verify services were seeded
