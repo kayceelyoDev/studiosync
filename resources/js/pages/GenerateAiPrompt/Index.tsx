@@ -594,11 +594,6 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                     <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
                         Design Your Vision
                     </h1>
-                    {workspace_name && (
-                        <p className="mt-2 font-medium text-primary bg-primary/10 inline-block px-3 py-1 rounded-full text-sm">
-                            Workspace: {workspace_name}
-                        </p>
-                    )}
                     <p className="max-w-2xl mx-auto mt-3 text-base text-muted-foreground">
                         Tell us exactly what you want. Our AI will translate your preferences into a stunning, production-ready portfolio.
                     </p>
@@ -1103,10 +1098,12 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
                                                     <Sparkles className="w-5 h-5 mr-2 text-primary" /> Preferences
                                                 </h3>
                                                 <dl className="space-y-4 text-sm">
-                                                    <div className="grid grid-cols-3 gap-4">
-                                                        <dt className="text-muted-foreground">Workspace</dt>
-                                                        <dd className="col-span-2 font-medium text-foreground">{workspace_name || 'Not specified'}</dd>
-                                                    </div>
+                                                    {workspace_name && (
+                                                        <div className="grid grid-cols-3 gap-4">
+                                                            <dt className="text-muted-foreground">Workspace</dt>
+                                                            <dd className="col-span-2 font-medium text-foreground">{workspace_name}</dd>
+                                                        </div>
+                                                    )}
                                                     <div className="grid grid-cols-3 gap-4">
                                                         <dt className="text-muted-foreground">Project Name</dt>
                                                         <dd className="col-span-2 font-medium text-foreground">{formData.project_name}</dd>

@@ -130,10 +130,6 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
     setLayoutProps({
         breadcrumbs: [
             { title: 'Dashboard', href: '/dashboard' },
-            { 
-                title: project.workspace?.name || 'Workspace', 
-                href: project.workspace ? `/workspaces/${project.workspace.id}` : '/dashboard' 
-            },
             { title: project.project_name || 'Project Details', href: '#' },
         ],
     });
@@ -306,9 +302,9 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                         {/* Left: Back button + Title + Badges */}
                         <div className="flex items-start sm:items-center gap-4">
                             <Link
-                                href={project.workspace ? `/workspaces/${project.workspace.id}` : '/dashboard'}
+                                href="/dashboard"
                                 className="shrink-0 flex items-center justify-center w-10 h-10 transition-colors bg-card border rounded-full shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted border-border"
-                                title="Return to Workspace"
+                                title="Return to Projects"
                             >
                                 <ChevronLeft className="w-5 h-5" />
                             </Link>
@@ -351,12 +347,14 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
 
                                 <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                                     {project.workspace && (
-                                        <span className="inline-flex items-center">
-                                            <Globe className="w-3.5 h-3.5 mr-1 opacity-70" />
-                                            Workspace: <strong className="ml-1 font-medium text-foreground">{project.workspace.name}</strong>
-                                        </span>
+                                        <>
+                                            <span className="inline-flex items-center">
+                                                <Globe className="w-3.5 h-3.5 mr-1 opacity-70" />
+                                                Workspace: <strong className="ml-1 font-medium text-foreground">{project.workspace.name}</strong>
+                                            </span>
+                                            <span>•</span>
+                                        </>
                                     )}
-                                    <span>•</span>
                                     <span className="inline-flex items-center">
                                         <Calendar className="w-3.5 h-3.5 mr-1 opacity-70" />
                                         Created {new Date(project.created_at).toLocaleDateString()}

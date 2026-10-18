@@ -12,7 +12,6 @@ use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\GenerateAiPromtPage;
 use App\Http\Controllers\ProjectAssetController;
 use App\Http\Controllers\VercelWebhookController;
-use App\Http\Controllers\WorkspaceController;
 use App\Models\Project;
 use Illuminate\Support\Facades\Route;
 
@@ -25,10 +24,11 @@ Route::inertia('/', 'welcome')->name('home');
 | Accessible by: super_admin, admin, client
 */
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('/dashboard', [WorkspaceController::class, 'index'])->name('dashboard');
-    Route::get('/workspaces/create', [WorkspaceController::class, 'create'])->name('workspaces.create');
-    Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspaces.store');
-    Route::get('/workspaces/{workspace}', [WorkspaceController::class, 'show'])->name('workspaces.show');
+    Route::get('/dashboard', [GenerateAiPromtPage::class, 'showProject'])->name('dashboard');
+    Route::get('/projects', [GenerateAiPromtPage::class, 'showProject'])->name('projects.index');
+    Route::get('/workspaces', fn () => redirect()->route('dashboard'));
+    Route::get('/workspaces/create', fn () => redirect()->route('generate-prompt.index'));
+    Route::get('/workspaces/{workspace}', fn () => redirect()->route('dashboard'))->name('workspaces.show');
     Route::get('/generate-prompt', [GenerateAiPromtPage::class, 'index'])->name('generate-prompt.index');
     Route::post('/generate-prompt', [GenerateAiPromtPage::class, 'generatePrompt'])->name('generate-prompt.store');
     Route::get('/projects/{project}/status', [GenerateAiPromtPage::class, 'checkStatus'])->name('projects.status');
@@ -77,6 +77,7 @@ Route::post('/api/contact/{token}', [ContactFormController::class, 'store'])
 | Accessible by: super_admin, admin
 */
 Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/workspaces', fn () => redirect()->route('admin.projects.index'));
     Route::get('/projects', [AdminWorkspaceController::class, 'index'])->name('projects.index');
     Route::get('/projects/{project}', [AdminWorkspaceController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [AdminWorkspaceController::class, 'update'])->name('projects.update');

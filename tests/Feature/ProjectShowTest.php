@@ -98,3 +98,28 @@ test('guest cannot view project details and is redirected to login', function ()
 
     $response->assertRedirect(route('login'));
 });
+
+test('authenticated user can view the details page for project without a workspace', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $project = Project::create([
+        'workspace_id' => null,
+        'user_id' => $user->id,
+        'project_name' => 'Acme Portfolio No Workspace',
+        'preferences' => [
+            'Description: Architecture Studio',
+        ],
+        'status' => 'completed',
+    ]);
+
+    $response = $this->get(route('projects.show', $project->id));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('Project/Show')
+        ->has('project')
+        ->where('project.id', $project->id)
+        ->where('project.workspace', null)
+    );
+});

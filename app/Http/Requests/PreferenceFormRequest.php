@@ -42,7 +42,7 @@ class PreferenceFormRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'workspace_id' => 'required|exists:workspaces,id',
+            'workspace_id' => 'nullable|exists:workspaces,id',
             'project_name' => 'required|string|max:255',
             'preferences' => 'required|array|min:1',
             'assets' => 'nullable|array',

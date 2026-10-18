@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Services\GeneratePromptServices;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 
@@ -77,6 +78,7 @@ test('GeneratePromptServices generates and stores prompt', function () {
 })->skip(fn () => empty(env('GEMINI_API_KEY')), 'Skipping real LLM test because GEMINI_API_KEY is not set in .env');
 
 test('GenerateAiPromtPage controller returns prompt', function () {
+    Queue::fake();
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -192,4 +194,66 @@ test('GeneratePromptServices assembleSections injects CSS variables', function (
         ->toContain('--color-text-muted: #777777;')
         ->toContain('data-layout="bento"')
         ->toContain('data-bento-grid');
+});
+
+test('user can access generate prompt page directly without creating a workspace', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->get('/generate-prompt');
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page->component('GenerateAiPrompt/Index'));
+});
+
+test('user can view their projects directly on the dashboard without a workspace', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $project = Project::create([
+        'workspace_id' => null,
+        'user_id' => $user->id,
+        'project_name' => 'Standalone Direct Project',
+        'preferences' => ['layout' => 'Modern'],
+        'status' => 'pending',
+    ]);
+
+    $response = $this->get('/dashboard');
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('dashboard')
+        ->has('projects', 1)
+        ->where('projects.0.id', $project->id)
+        ->where('projects.0.project_name', 'Standalone Direct Project')
+    );
+});
+
+test('legacy workspace routes redirect to dashboard or generate prompt', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $this->get('/workspaces')->assertRedirect('/dashboard');
+    $this->get('/workspaces/create')->assertRedirect('/generate-prompt');
+    $this->get('/workspaces/999')->assertRedirect(route('dashboard'));
+});
+
+test('user can generate a project directly without a workspace', function () {
+    Queue::fake();
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->postJson('/generate-prompt', [
+        'project_name' => 'Direct Project No Workspace',
+        'preferences' => [
+            'vibe: clean, modern',
+        ],
+    ]);
+
+    $response->assertStatus(200);
+    $response->assertJsonStructure(['success', 'message', 'project_id']);
+
+    $this->assertDatabaseHas('projects', [
+        'user_id' => $user->id,
+        'workspace_id' => null,
+        'project_name' => 'Direct Project No Workspace',
+    ]);
 });

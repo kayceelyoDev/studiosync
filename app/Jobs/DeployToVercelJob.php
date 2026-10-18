@@ -67,7 +67,9 @@ class DeployToVercelJob implements ShouldQueue
                     $slug = Str::slug($this->chosenSubdomain);
                 } else {
                     $cleanTitle = Str::slug(substr($project->project_name, 0, 30)) ?: 'site';
-                    $slug = "ss-w{$project->workspace_id}-p{$project->id}-{$cleanTitle}";
+                    $slug = $project->workspace_id
+                        ? "ss-w{$project->workspace_id}-p{$project->id}-{$cleanTitle}"
+                        : "ss-p{$project->id}-{$cleanTitle}";
                 }
                 $vercelProjectName = substr($slug, 0, 95);
             }

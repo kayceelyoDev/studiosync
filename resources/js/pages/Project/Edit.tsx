@@ -993,7 +993,7 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     ? cardIconSvgEl.parentElement as HTMLElement
                     : null;
                 const cardIconBg = cardIconWrapper?.style.backgroundColor || '';
-                const cardIconColor = (cardIconSvgEl as HTMLElement)?.style.color || '';
+                const cardIconColor = (cardIconSvgEl as unknown as HTMLElement)?.style.color || '';
 
                 // Card Button Icon detection
                 const btnSvg = buttonEl?.querySelector('svg') || null;
@@ -1868,7 +1868,7 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     const label = isIconClick
                         ? (linkEl.tagName === 'BUTTON' ? 'Button Icon' : 'Link Icon')
                         : (linkEl.tagName === 'BUTTON' ? 'Button' : 'Link');
-                    showSelectionLabel(isIconClick && iconEl ? iconEl as HTMLElement : linkEl, label);
+                    showSelectionLabel(isIconClick && iconEl ? iconEl as unknown as HTMLElement : linkEl, label);
                     setHighlightedTarget({ type: 'link', index, subField, timestamp: Date.now() });
                     return;
                 }
@@ -3353,7 +3353,7 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                     }
                 }
 
-                if (!surgicalDone) {
+                if (!surgicalSuccess) {
                     const updatedSection = doc.getElementById(selectedSectionId);
                     if (updatedSection) {
                         liveSection.innerHTML = updatedSection.innerHTML;
@@ -4447,9 +4447,9 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                 {/* Left: Brand, Project Name & Layers Toggle */}
                 <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
                     <Link
-                        href={project.workspace ? `/workspaces/${project.workspace.id}` : '/dashboard'}
+                        href={`/projects/${project.id}`}
                         className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors shrink-0"
-                        title="Back to Workspace"
+                        title="Back to Project Details"
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </Link>

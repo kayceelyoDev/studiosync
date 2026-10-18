@@ -93,8 +93,8 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
 
     setLayoutProps({
         breadcrumbs: [
-            { title: 'Dashboard', href: '/admin/workspaces' },
-            { title: 'Client Requests', href: '/admin/workspaces' },
+            { title: 'Dashboard', href: '/admin/projects' },
+            { title: 'Client Requests', href: '/admin/projects' },
             { title: `Review: ${workspace.project_name || 'Project'}`, href: '#' },
         ],
     });

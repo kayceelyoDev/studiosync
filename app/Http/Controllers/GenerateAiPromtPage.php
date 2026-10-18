@@ -7,7 +7,6 @@ use App\Jobs\GenerateWebsiteJob;
 use App\Models\AssetFolder;
 use App\Models\Project;
 use App\Models\ProjectAsset;
-use App\Models\Workspace;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,27 +19,7 @@ class GenerateAiPromtPage extends Controller
 {
     public function index(Request $request)
     {
-        $workspaceId = $request->query('workspace_id');
-        $workspace = null;
-
-        if ($workspaceId) {
-            $workspace = Workspace::where('id', $workspaceId)
-                ->where('user_id', auth()->id())
-                ->first();
-        } else {
-            $workspace = Workspace::where('user_id', auth()->id())
-                ->orderBy('created_at', 'desc')
-                ->first();
-        }
-
-        if (! $workspace) {
-            return redirect()->route('dashboard')->with('error', 'Please create a workspace first before generating a project.');
-        }
-
-        return Inertia::render('GenerateAiPrompt/Index', [
-            'workspace_id' => $workspace?->id,
-            'workspace_name' => $workspace?->name,
-        ]);
+        return Inertia::render('GenerateAiPrompt/Index');
     }
 
     public function showProject()
@@ -55,6 +34,7 @@ class GenerateAiPromtPage extends Controller
 
         $data = Project::select('id', 'workspace_id', 'project_name', 'status', 'project_url', 'deployment_status', 'vercel_project_name', 'created_at')
             ->where('user_id', Auth::user()->id)
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return Inertia::render('dashboard', [
@@ -86,7 +66,7 @@ class GenerateAiPromtPage extends Controller
 
         $project = DB::transaction(function () use ($data, $request) {
             $project = Project::create([
-                'workspace_id' => $data['workspace_id'],
+                'workspace_id' => $data['workspace_id'] ?? null,
                 'user_id' => auth()->id(),
                 'project_name' => $data['project_name'] ?? 'Untitled',
                 'preferences' => $data['preferences'] ?? [],
