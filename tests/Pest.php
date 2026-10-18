@@ -16,7 +16,11 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    ->in('Feature', __DIR__.'/Feature');
+    ->in('Feature');
+
+if (getcwd() && realpath(getcwd()) !== realpath(__DIR__.'/..') && file_exists(getcwd().'/tests/Pest.php')) {
+    require_once getcwd().'/tests/Pest.php';
+}
 
 /*
 |--------------------------------------------------------------------------
