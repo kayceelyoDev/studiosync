@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'api/webhooks/vercel',
             'webhooks/vercel',
+            'api/contact/*',
         ]);
 
         $middleware->web(append: [

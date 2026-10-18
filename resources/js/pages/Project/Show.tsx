@@ -77,10 +77,40 @@ interface ProjectData {
     project_assets?: ProjectAsset[];
     projectAssets?: ProjectAsset[];
     deployments?: Deployment[];
+    contact_emailer?: {
+        id: number;
+        recipient_email: string;
+        reply_name: string;
+        public_token: string;
+        is_active: boolean;
+        messages_count?: number;
+    } | null;
+    contactEmailer?: {
+        id: number;
+        recipient_email: string;
+        reply_name: string;
+        public_token: string;
+        is_active: boolean;
+        messages_count?: number;
+    } | null;
+}
+
+function getPublicLiveUrl(p: { project_url?: string | null; vercel_project_name?: string | null }): string | null {
+    if (p.vercel_project_name) {
+        return `https://${p.vercel_project_name}.vercel.app`;
+    }
+    if (p.project_url) {
+        const match = p.project_url.match(/https?:\/\/([a-z0-9-]+?)-[a-z0-9]{8,}-[a-z0-9-]+\.vercel\.app/i);
+        if (match && match[1]) {
+            return `https://${match[1]}.vercel.app`;
+        }
+        return p.project_url;
+    }
+    return null;
 }
 
 export default function ProjectShow({ project }: { project: ProjectData }) {
-    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code'>('preview');
+    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code' | 'contact'>('preview');
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
@@ -91,9 +121,10 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
     const isDeploying = project.deployment_status === 'deploying';
     const isLocked = isDeployed || isDeploying;
 
-    const liveUrl = project.project_url || (project.vercel_project_name ? `https://${project.vercel_project_name}.vercel.app` : null);
+    const liveUrl = getPublicLiveUrl(project);
     const assetsList = project.project_assets || project.projectAssets || [];
     const deploymentsList = project.deployments || [];
+    const emailer = project.contact_emailer || project.contactEmailer;
 
     // Set layout breadcrumbs
     setLayoutProps({
@@ -612,6 +643,27 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                 <Code2 className="w-4 h-4" />
                                 Source Code
                             </button>
+
+                            <button
+                                onClick={() => setActiveTab('contact')}
+                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                                    activeTab === 'contact'
+                                        ? 'border-primary text-primary font-semibold'
+                                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                                }`}
+                            >
+                                <Mail className="w-4 h-4" />
+                                Contact Form
+                                {emailer && (
+                                    <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                                        emailer.is_active
+                                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-muted text-muted-foreground border border-border'
+                                    }`}>
+                                        {emailer.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                )}
+                            </button>
                         </div>
                     </div>
 
@@ -1059,6 +1111,101 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {/* TAB 6: CONTACT FORM INTEGRATION */}
+                    {activeTab === 'contact' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {emailer ? (
+                                <>
+                                    {/* Config card */}
+                                    <div className="p-6 bg-card rounded-xl border border-border shadow-xs space-y-4">
+                                        <div className="flex items-center justify-between pb-3 border-b border-border">
+                                            <div className="flex items-center gap-2">
+                                                <Mail className="w-5 h-5 text-primary" />
+                                                <h3 className="text-base font-semibold text-foreground">Contact Form Status</h3>
+                                            </div>
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                                                emailer.is_active
+                                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                                    : 'bg-muted text-muted-foreground border border-border'
+                                            }`}>
+                                                {emailer.is_active && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                                                {emailer.is_active ? 'Active & Receiving Messages' : 'Temporarily Inactive'}
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-3 text-sm">
+                                            <div>
+                                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider block">Recipient Inbox</span>
+                                                <span className="font-semibold text-foreground">{emailer.recipient_email}</span>
+                                            </div>
+
+                                            <div>
+                                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider block">Reply Name</span>
+                                                <span className="text-foreground">{emailer.reply_name}</span>
+                                            </div>
+
+                                            <div>
+                                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider block">Messages Received</span>
+                                                <span className="text-lg font-bold text-foreground">{emailer.messages_count ?? 0}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2">
+                                            <Link
+                                                href={`/projects/${project.id}/contact-messages`}
+                                                className="inline-flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs"
+                                            >
+                                                <Mail className="w-4 h-4" />
+                                                View All Contact Messages ({emailer.messages_count ?? 0})
+                                            </Link>
+                                        </div>
+                                    </div>
+
+                                    {/* How it works card */}
+                                    <div className="p-6 bg-card rounded-xl border border-border shadow-xs space-y-4">
+                                        <div className="flex items-center gap-2 pb-3 border-b border-border">
+                                            <CheckCircle2 className="w-5 h-5 text-primary" />
+                                            <h3 className="text-base font-semibold text-foreground">How Guest Replies Work</h3>
+                                        </div>
+
+                                        <div className="space-y-3 text-xs text-muted-foreground leading-relaxed">
+                                            <p>
+                                                1. When a guest fills out your website contact form, StudioSync receives the message and forwards an email notification to <strong className="text-foreground">{emailer.recipient_email}</strong>.
+                                            </p>
+                                            <p>
+                                                2. The notification email is configured with the guest&apos;s email address as the <strong className="text-foreground">Reply-To</strong> header.
+                                            </p>
+                                            <p>
+                                                3. When you click <strong className="text-foreground">Reply</strong> in your email client (Gmail, Outlook, Apple Mail), your reply goes directly to the guest without any intermediate steps.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="md:col-span-2 p-8 bg-card rounded-xl border border-border shadow-xs text-center space-y-4">
+                                    <div className="w-12 h-12 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center">
+                                        <Mail className="w-6 h-6" />
+                                    </div>
+                                    <div className="max-w-md mx-auto space-y-2">
+                                        <h3 className="text-lg font-bold text-foreground">Contact Form Not Connected</h3>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Your website currently contains a default placeholder contact form. To connect it to your personal or business email inbox, submit an Email Integration request to our team.
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <Link
+                                            href={`/requests/create?project_id=${project.id}&category=email_integration`}
+                                            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-sm"
+                                        >
+                                            <Mail className="w-4 h-4" />
+                                            Request Email Integration
+                                        </Link>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

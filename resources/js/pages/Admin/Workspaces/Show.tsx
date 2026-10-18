@@ -68,6 +68,14 @@ interface AdminProjectData {
     project_assets?: ProjectAsset[];
     projectAssets?: ProjectAsset[];
     deployments?: Deployment[];
+    contact_emailer?: {
+        id: number;
+        recipient_email: string;
+        reply_name: string;
+        public_token: string;
+        is_active: boolean;
+        messages_count?: number;
+    } | null;
 }
 
 export default function AdminWorkspacesShow({ workspace }: { workspace: AdminProjectData }) {
@@ -460,6 +468,41 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                     </button>
                                 </div>
                             </form>
+
+                            {/* Contact Emailer Card */}
+                            <div className="bg-card rounded-xl border border-border shadow-xs p-5 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+                                        <Mail className="w-4 h-4 text-primary" />
+                                        <span>Contact Emailer</span>
+                                    </div>
+                                    {workspace.contact_emailer ? (
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                            workspace.contact_emailer.is_active
+                                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                                                : 'bg-muted text-muted-foreground border border-border'
+                                        }`}>
+                                            {workspace.contact_emailer.is_active ? 'Active' : 'Inactive'}
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                                            Not Configured
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    {workspace.contact_emailer
+                                        ? `Forwarding to ${workspace.contact_emailer.recipient_email} (${workspace.contact_emailer.messages_count ?? 0} messages received).`
+                                        : 'Configure email forwarding for this project, inject the contact script, and deploy.'}
+                                </p>
+                                <Link
+                                    href={`/admin/projects/${workspace.id}/emailer`}
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-all bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 shadow-xs"
+                                >
+                                    <Mail className="w-4 h-4" />
+                                    {workspace.contact_emailer ? 'Manage & Deploy Emailer' : 'Configure Emailer'}
+                                </Link>
+                            </div>
 
                             {/* Audit Metadata Card */}
                             <div className="bg-card rounded-xl border border-border shadow-xs p-5 space-y-2 text-xs text-muted-foreground">

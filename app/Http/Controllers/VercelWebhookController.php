@@ -48,36 +48,35 @@ class VercelWebhookController extends Controller
         $deployment = Deployment::where('vercel_deployment_id', $dplId)->first();
 
         if ($type === 'deployment.succeeded') {
-            $url = 'https://'.ltrim((string) ($deploymentData['url'] ?? ''), '/');
+            $rawDplUrl = 'https://'.ltrim((string) ($deploymentData['url'] ?? ''), '/');
+            $targetProject = $deployment ? Project::find($deployment->project_id) : null;
+            if (! $targetProject && ! empty($deploymentData['projectId'])) {
+                $targetProject = Project::where('vercel_project_id', $deploymentData['projectId'])->first();
+            }
+
+            $canonicalUrl = null;
+            if (! empty($deploymentData['alias']) && is_array($deploymentData['alias']) && count($deploymentData['alias']) > 0) {
+                $canonicalUrl = 'https://'.ltrim($deploymentData['alias'][0], '/');
+            } elseif ($targetProject && ! empty($targetProject->vercel_project_name)) {
+                $canonicalUrl = "https://{$targetProject->vercel_project_name}.vercel.app";
+            }
+
+            $publicLiveUrl = $canonicalUrl ?? $rawDplUrl;
 
             if ($deployment) {
                 $deployment->update([
                     'status' => DeploymentStatus::Ready->value,
-                    'url' => $url,
+                    'url' => $publicLiveUrl,
                 ]);
+            }
 
-                $project = Project::find($deployment->project_id);
-                if ($project) {
-                    $project->update([
-                        'deployment_status' => DeploymentStatus::Deployed->value,
-                        'status' => ProjectStatus::Deployed->value,
-                        'project_url' => $url,
-                        'deployed_at' => now(),
-                    ]);
-                }
-            } else {
-                $projectId = $deploymentData['projectId'] ?? null;
-                if ($projectId) {
-                    $project = Project::where('vercel_project_id', $projectId)->first();
-                    if ($project) {
-                        $project->update([
-                            'deployment_status' => DeploymentStatus::Deployed->value,
-                            'status' => ProjectStatus::Deployed->value,
-                            'project_url' => $url,
-                            'deployed_at' => now(),
-                        ]);
-                    }
-                }
+            if ($targetProject) {
+                $targetProject->update([
+                    'deployment_status' => DeploymentStatus::Deployed->value,
+                    'status' => ProjectStatus::Deployed->value,
+                    'project_url' => $publicLiveUrl,
+                    'deployed_at' => now(),
+                ]);
             }
 
             return response()->json(['received' => true, 'action' => 'marked_ready']);

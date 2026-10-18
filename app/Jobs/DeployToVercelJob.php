@@ -91,6 +91,7 @@ class DeployToVercelJob implements ShouldQueue
 
             $dplId = $deploymentResponse['id'] ?? null;
             $dplUrl = ! empty($deploymentResponse['url']) ? 'https://'.ltrim($deploymentResponse['url'], '/') : null;
+            $publicLiveUrl = ! empty($vercelProjectName) ? "https://{$vercelProjectName}.vercel.app" : $dplUrl;
             $readyState = strtoupper((string) ($deploymentResponse['readyState'] ?? 'INITIALIZING'));
 
             $deployment = Deployment::create([
@@ -98,19 +99,19 @@ class DeployToVercelJob implements ShouldQueue
                 'user_id' => $project->user_id,
                 'vercel_deployment_id' => $dplId,
                 'vercel_project_id' => $vercelProjectId,
-                'url' => $dplUrl,
+                'url' => $publicLiveUrl ?? $dplUrl,
                 'status' => $readyState === 'READY' ? DeploymentStatus::Ready->value : DeploymentStatus::Building->value,
                 'content_hash' => $contentHash,
             ]);
 
-            if ($readyState === 'READY' && $dplUrl) {
+            if ($readyState === 'READY' && ($publicLiveUrl || $dplUrl)) {
                 $project->update([
                     'deployment_status' => DeploymentStatus::Deployed->value,
                     'status' => ProjectStatus::Deployed->value,
-                    'project_url' => $dplUrl,
+                    'project_url' => $publicLiveUrl ?? $dplUrl,
                     'deployed_at' => now(),
                 ]);
-                Log::info("Deployment for project {$project->id} finished immediately on Vercel: {$dplUrl}");
+                Log::info("Deployment for project {$project->id} finished immediately on Vercel: ".($publicLiveUrl ?? $dplUrl));
             } else {
                 // Dispatch background status checker job after 5 seconds
                 CheckVercelDeploymentStatusJob::dispatch($deployment->id)->delay(now()->addSeconds(5));
