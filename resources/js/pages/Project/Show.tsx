@@ -1270,10 +1270,10 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                             {project.booking_enabled ? (
                                 <div className="space-y-6">
                                     {/* Active Booking Banner */}
-                                    <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-card to-card border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+                                    <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-card to-card border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xs">
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2">
-                                                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                                                     Booking System Active
                                                 </span>
                                                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

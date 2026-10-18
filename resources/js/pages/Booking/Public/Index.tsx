@@ -13,8 +13,11 @@ import {
     ArrowLeft,
     ShieldCheck,
     AlertCircle,
-    Sparkles
+    Sparkles,
+    Sun,
+    Moon
 } from 'lucide-react';
+import { useAppearance } from '@/hooks/use-appearance';
 
 interface BookingService {
     id: number;
@@ -41,6 +44,16 @@ interface PublicBookingProps {
 }
 
 export default function PublicBookingIndex({ project, services }: PublicBookingProps) {
+    const { appearance, updateAppearance } = useAppearance();
+
+    const toggleTheme = () => {
+        if (appearance === 'dark') {
+            updateAppearance('light');
+        } else {
+            updateAppearance('dark');
+        }
+    };
+
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [selectedService, setSelectedService] = useState<BookingService | null>(
         services.length > 0 ? services[0] : null
@@ -61,9 +74,10 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
     const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
     const [slotsError, setSlotsError] = useState<string | null>(null);
 
+    // Reservation Form
     const { data, setData, post, processing, errors } = useForm({
-        service_id: selectedService?.id || 0,
-        date: selectedDate,
+        service_id: selectedService ? selectedService.id : 0,
+        date: todayStr,
         time: '',
         customer_name: '',
         customer_email: '',
@@ -71,35 +85,43 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
         customer_notes: '',
     });
 
-    // Whenever selectedService or selectedDate changes, fetch open slots
+    // Fetch availability slots whenever service or date changes
     useEffect(() => {
-        if (!selectedService || !selectedDate) return;
+        if (!selectedService || !selectedDate) {
+            setSlots([]);
+            return;
+        }
 
+        let isMounted = true;
         setLoadingSlots(true);
         setSlotsError(null);
 
         fetch(`/book/${project.token}/slots?service_id=${selectedService.id}&date=${selectedDate}`)
-            .then((res) => {
+            .then(async (res) => {
                 if (!res.ok) {
-                    throw new Error('Unable to retrieve available slots.');
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to fetch available time slots');
                 }
                 return res.json();
             })
-            .then((result) => {
-                setSlots(result.slots || []);
-                // If current selected time is not in returned slots, clear it
-                if (data.time && (!result.slots || !result.slots.includes(data.time))) {
-                    setData('time', '');
+            .then((resData) => {
+                if (isMounted) {
+                    setSlots(resData.slots || []);
+                    setLoadingSlots(false);
                 }
             })
             .catch((err) => {
-                setSlots([]);
-                setSlotsError('Could not load slots. Please select another date.');
-            })
-            .finally(() => {
-                setLoadingSlots(false);
+                if (isMounted) {
+                    setSlots([]);
+                    setSlotsError(err.message || 'Error fetching availability');
+                    setLoadingSlots(false);
+                }
             });
-    }, [selectedService?.id, selectedDate]);
+
+        return () => {
+            isMounted = false;
+        };
+    }, [selectedService, selectedDate, project.token]);
 
     const handleServiceSelect = (service: BookingService) => {
         setSelectedService(service);
@@ -123,26 +145,38 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
     };
 
     return (
-        <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col justify-between selection:bg-blue-600 selection:text-white">
+        <div className="min-h-screen bg-background text-foreground flex flex-col justify-between selection:bg-primary/20 selection:text-foreground">
             <Head title={`Book an Appointment - ${project.project_name}`} />
 
             {/* Top Brand Banner */}
-            <header className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-md sticky top-0 z-30">
-                <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30">
+                <div className="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
                             <Sparkles className="w-5 h-5" />
                         </div>
                         <div>
-                            <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                            <h1 className="text-base sm:text-lg font-bold text-foreground tracking-tight">
                                 {project.project_name}
                             </h1>
-                            <p className="text-xs text-neutral-400">Online Appointment Reservation</p>
+                            <p className="text-xs text-muted-foreground">Online Appointment Reservation</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Verified Portal</span>
+
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Verified Portal</span>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-accent transition-colors"
+                            aria-label="Toggle theme"
+                        >
+                            {appearance === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                        </button>
                     </div>
                 </div>
             </header>
@@ -151,49 +185,49 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
             <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 sm:py-12">
                 {/* Step Indicators */}
                 <div className="flex items-center justify-center mb-8">
-                    <div className="flex items-center gap-2 sm:gap-4 text-xs font-semibold">
+                    <div className="flex items-center gap-2 sm:gap-3 text-xs font-semibold">
                         <button
                             type="button"
                             onClick={() => setStep(1)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full transition-all ${
                                 step === 1
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                    : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                                    ? 'bg-primary text-primary-foreground shadow-xs'
+                                    : 'bg-muted text-muted-foreground hover:text-foreground'
                             }`}
                         >
-                            <span className="w-4 h-4 rounded-full bg-black/20 flex items-center justify-center text-[10px]">
+                            <span className="w-4 h-4 rounded-full bg-background/20 flex items-center justify-center text-[10px]">
                                 1
                             </span>
                             <span>Service</span>
                         </button>
-                        <div className="w-6 h-0.5 bg-neutral-800" />
+                        <div className="w-6 sm:w-10 h-0.5 bg-border" />
                         <button
                             type="button"
                             onClick={() => selectedService && setStep(2)}
                             disabled={!selectedService}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full transition-all ${
                                 step === 2
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                    : 'bg-neutral-800 text-neutral-400 disabled:opacity-40'
+                                    ? 'bg-primary text-primary-foreground shadow-xs'
+                                    : 'bg-muted text-muted-foreground disabled:opacity-40 hover:text-foreground'
                             }`}
                         >
-                            <span className="w-4 h-4 rounded-full bg-black/20 flex items-center justify-center text-[10px]">
+                            <span className="w-4 h-4 rounded-full bg-background/20 flex items-center justify-center text-[10px]">
                                 2
                             </span>
                             <span>Date & Time</span>
                         </button>
-                        <div className="w-6 h-0.5 bg-neutral-800" />
+                        <div className="w-6 sm:w-10 h-0.5 bg-border" />
                         <button
                             type="button"
                             onClick={() => selectedService && data.time && setStep(3)}
                             disabled={!selectedService || !data.time}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full transition-all ${
                                 step === 3
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                    : 'bg-neutral-800 text-neutral-400 disabled:opacity-40'
+                                    ? 'bg-primary text-primary-foreground shadow-xs'
+                                    : 'bg-muted text-muted-foreground disabled:opacity-40 hover:text-foreground'
                             }`}
                         >
-                            <span className="w-4 h-4 rounded-full bg-black/20 flex items-center justify-center text-[10px]">
+                            <span className="w-4 h-4 rounded-full bg-background/20 flex items-center justify-center text-[10px]">
                                 3
                             </span>
                             <span>Your Details</span>
@@ -205,17 +239,20 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                 {step === 1 && (
                     <div className="animate-in fade-in space-y-6">
                         <div className="text-center max-w-lg mx-auto">
-                            <h2 className="text-2xl font-bold tracking-tight text-white">Select a Service</h2>
-                            <p className="text-sm text-neutral-400 mt-1">
+                            <h2 className="text-2xl font-bold tracking-tight text-foreground">Select a Service</h2>
+                            <p className="text-sm text-muted-foreground mt-1">
                                 Choose from available appointments offered by {project.project_name}
                             </p>
                         </div>
 
                         {services.length === 0 ? (
-                            <div className="p-8 text-center bg-neutral-900 border border-neutral-800 rounded-2xl">
-                                <AlertCircle className="w-8 h-8 text-neutral-500 mx-auto mb-2" />
-                                <p className="text-sm text-neutral-400">
-                                    No services are currently listed for booking. Please check back later.
+                            <div className="p-8 sm:p-10 text-center bg-card border border-border rounded-2xl shadow-xs space-y-3">
+                                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground mx-auto">
+                                    <AlertCircle className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-base font-semibold text-foreground">No Services Available</h3>
+                                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                                    No services are currently listed for booking on this project. Please check back later or contact the owner.
                                 </p>
                             </div>
                         ) : (
@@ -226,38 +263,38 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                         <div
                                             key={service.id}
                                             onClick={() => handleServiceSelect(service)}
-                                            className={`cursor-pointer p-5 rounded-2xl border transition-all text-left flex flex-col justify-between ${
+                                            className={`cursor-pointer p-5 rounded-xl border transition-all text-left flex flex-col justify-between ${
                                                 isChosen
-                                                    ? 'bg-blue-950/30 border-blue-500 ring-2 ring-blue-500/20 shadow-xl'
-                                                    : 'bg-neutral-900/60 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900'
+                                                    ? 'border-primary ring-2 ring-primary/20 bg-primary/[0.03] dark:bg-primary/[0.08] shadow-sm'
+                                                    : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30 shadow-xs'
                                             }`}
                                         >
                                             <div>
                                                 <div className="flex items-start justify-between gap-3">
-                                                    <h3 className="text-base font-semibold text-white">
+                                                    <h3 className="text-base font-semibold text-foreground">
                                                         {service.name}
                                                     </h3>
-                                                    <div className="text-base font-bold text-emerald-400 whitespace-nowrap">
+                                                    <div className="text-base font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                                                         ${Number(service.price).toFixed(2)}
                                                     </div>
                                                 </div>
                                                 {service.description && (
-                                                    <p className="text-xs text-neutral-400 mt-2 line-clamp-2">
+                                                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
                                                         {service.description}
                                                     </p>
                                                 )}
                                             </div>
 
-                                            <div className="flex items-center justify-between pt-4 mt-4 border-t border-neutral-800/60">
-                                                <div className="flex items-center gap-1.5 text-xs text-neutral-400">
-                                                    <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                                            <div className="flex items-center justify-between pt-4 mt-4 border-t border-border">
+                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                    <Clock className="w-3.5 h-3.5" />
                                                     <span>{service.duration_minutes} minutes</span>
                                                 </div>
                                                 <span
-                                                    className={`text-xs font-medium px-2.5 py-1 rounded-lg ${
+                                                    className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-colors ${
                                                         isChosen
-                                                            ? 'bg-blue-600 text-white'
-                                                            : 'bg-neutral-800 text-neutral-300'
+                                                            ? 'bg-primary text-primary-foreground'
+                                                            : 'bg-muted text-muted-foreground'
                                                     }`}
                                                 >
                                                     {isChosen ? 'Selected' : 'Select'}
@@ -274,7 +311,7 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                 type="button"
                                 disabled={!selectedService}
                                 onClick={() => setStep(2)}
-                                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all"
+                                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold shadow-sm disabled:opacity-50 transition-all"
                             >
                                 <span>Continue to Date & Time</span>
                                 <ArrowRight className="w-4 h-4" />
@@ -287,16 +324,16 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                 {step === 2 && selectedService && (
                     <div className="animate-in fade-in space-y-6">
                         <div className="text-center max-w-lg mx-auto">
-                            <h2 className="text-2xl font-bold tracking-tight text-white">Pick Date & Time</h2>
-                            <p className="text-sm text-neutral-400 mt-1">
+                            <h2 className="text-2xl font-bold tracking-tight text-foreground">Pick Date & Time</h2>
+                            <p className="text-sm text-muted-foreground mt-1">
                                 Schedulable for {selectedService.name} ({selectedService.duration_minutes} min)
                             </p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6">
                             {/* Date Picker Section */}
-                            <div className="md:col-span-5 bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-                                <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">
+                            <div className="md:col-span-5 bg-card border border-border rounded-xl p-6 shadow-xs">
+                                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                                     Appointment Date
                                 </label>
                                 <div className="relative">
@@ -305,24 +342,24 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                         min={todayStr}
                                         value={selectedDate}
                                         onChange={(e) => handleDateChange(e.target.value)}
-                                        className="w-full px-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full px-3.5 py-2.5 bg-background border border-border rounded-lg text-foreground text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
                                     />
                                 </div>
-                                <div className="mt-4 text-xs text-neutral-500 space-y-1">
+                                <div className="mt-4 text-xs text-muted-foreground space-y-1.5 leading-relaxed">
                                     <p>• Only open operating hours are selectable.</p>
                                     <p>• Appointments book in {selectedService.duration_minutes}-minute increments.</p>
                                 </div>
                             </div>
 
                             {/* Time Slots Section */}
-                            <div className="md:col-span-7 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 flex flex-col justify-between">
+                            <div className="md:col-span-7 bg-card border border-border rounded-xl p-6 shadow-xs flex flex-col justify-between">
                                 <div>
                                     <div className="flex items-center justify-between mb-4">
-                                        <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                                             Available Slots
                                         </label>
                                         {selectedDate && (
-                                            <span className="text-xs text-blue-400 font-medium">
+                                            <span className="text-xs font-medium text-foreground bg-muted px-2.5 py-1 rounded-md">
                                                 {new Date(selectedDate + 'T00:00:00').toLocaleDateString(undefined, {
                                                     weekday: 'short',
                                                     month: 'short',
@@ -333,21 +370,21 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                     </div>
 
                                     {loadingSlots ? (
-                                        <div className="py-12 flex flex-col items-center justify-center text-neutral-500">
-                                            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2" />
+                                        <div className="py-12 flex flex-col items-center justify-center text-muted-foreground">
+                                            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mb-2" />
                                             <span className="text-xs">Checking real-time calendar availability...</span>
                                         </div>
                                     ) : slotsError ? (
-                                        <div className="py-8 text-center text-red-400 text-xs">
+                                        <div className="py-8 text-center text-destructive text-xs">
                                             {slotsError}
                                         </div>
                                     ) : slots.length === 0 ? (
-                                        <div className="py-12 text-center text-neutral-500 space-y-2">
-                                            <Clock className="w-8 h-8 text-neutral-600 mx-auto" />
-                                            <p className="text-sm font-medium text-neutral-400">
+                                        <div className="py-12 text-center text-muted-foreground space-y-2">
+                                            <Clock className="w-8 h-8 text-muted-foreground/60 mx-auto" />
+                                            <p className="text-sm font-medium text-foreground">
                                                 No time slots available for this date.
                                             </p>
-                                            <p className="text-xs text-neutral-600">
+                                            <p className="text-xs text-muted-foreground">
                                                 Please select another day on the calendar.
                                             </p>
                                         </div>
@@ -360,10 +397,10 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                                         type="button"
                                                         key={slot}
                                                         onClick={() => handleTimeSelect(slot)}
-                                                        className={`py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
+                                                        className={`py-2 px-3 text-xs font-semibold rounded-lg border transition-all ${
                                                             isPicked
-                                                                ? 'bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-500/20'
-                                                                : 'bg-neutral-950 border-neutral-800 text-neutral-300 hover:border-neutral-700 hover:bg-neutral-800'
+                                                                ? 'bg-primary border-primary text-primary-foreground shadow-xs'
+                                                                : 'bg-background border-border text-foreground hover:border-primary/40 hover:bg-accent'
                                                         }`}
                                                     >
                                                         {slot}
@@ -375,9 +412,9 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                 </div>
 
                                 {data.time && (
-                                    <div className="mt-4 p-3 rounded-xl bg-blue-950/30 border border-blue-500/20 flex items-center justify-between text-xs text-blue-300">
-                                        <span>Selected Slot:</span>
-                                        <span className="font-bold text-white">
+                                    <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between text-xs text-foreground">
+                                        <span className="text-muted-foreground">Selected Slot:</span>
+                                        <span className="font-bold">
                                             {data.date} at {data.time}
                                         </span>
                                     </div>
@@ -390,7 +427,7 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                             <button
                                 type="button"
                                 onClick={() => setStep(1)}
-                                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-neutral-400 hover:text-white"
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <ArrowLeft className="w-4 h-4" />
                                 <span>Change Service</span>
@@ -399,7 +436,7 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                 type="button"
                                 disabled={!data.time}
                                 onClick={() => setStep(3)}
-                                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all"
+                                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold shadow-sm disabled:opacity-50 transition-all"
                             >
                                 <span>Provide Guest Details</span>
                                 <ArrowRight className="w-4 h-4" />
@@ -412,76 +449,76 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                 {step === 3 && selectedService && (
                     <form onSubmit={handleReserve} className="animate-in fade-in space-y-6">
                         <div className="text-center max-w-lg mx-auto">
-                            <h2 className="text-2xl font-bold tracking-tight text-white">Your Contact Details</h2>
-                            <p className="text-sm text-neutral-400 mt-1">
+                            <h2 className="text-2xl font-bold tracking-tight text-foreground">Your Contact Details</h2>
+                            <p className="text-sm text-muted-foreground mt-1">
                                 Complete your reservation for {selectedService.name}
                             </p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6">
                             {/* Form Inputs */}
-                            <div className="md:col-span-7 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
+                            <div className="md:col-span-7 bg-card border border-border rounded-xl p-6 shadow-xs space-y-4">
                                 <div>
-                                    <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
                                         Full Name *
                                     </label>
                                     <div className="relative">
-                                        <User className="absolute left-3.5 top-3.5 w-4 h-4 text-neutral-500" />
+                                        <User className="absolute left-3.5 top-3 w-4 h-4 text-muted-foreground" />
                                         <input
                                             type="text"
                                             required
                                             value={data.customer_name}
                                             onChange={(e) => setData('customer_name', e.target.value)}
                                             placeholder="Jane Doe"
-                                            className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                         />
                                     </div>
                                     {errors.customer_name && (
-                                        <p className="text-xs text-red-500 mt-1">{errors.customer_name}</p>
+                                        <p className="text-xs text-destructive mt-1">{errors.customer_name}</p>
                                     )}
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
                                         Email Address *
                                     </label>
                                     <div className="relative">
-                                        <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-neutral-500" />
+                                        <Mail className="absolute left-3.5 top-3 w-4 h-4 text-muted-foreground" />
                                         <input
                                             type="email"
                                             required
                                             value={data.customer_email}
                                             onChange={(e) => setData('customer_email', e.target.value)}
                                             placeholder="jane@example.com"
-                                            className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                         />
                                     </div>
                                     {errors.customer_email && (
-                                        <p className="text-xs text-red-500 mt-1">{errors.customer_email}</p>
+                                        <p className="text-xs text-destructive mt-1">{errors.customer_email}</p>
                                     )}
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
                                         Phone Number (Optional)
                                     </label>
                                     <div className="relative">
-                                        <Phone className="absolute left-3.5 top-3.5 w-4 h-4 text-neutral-500" />
+                                        <Phone className="absolute left-3.5 top-3 w-4 h-4 text-muted-foreground" />
                                         <input
                                             type="tel"
                                             value={data.customer_phone}
                                             onChange={(e) => setData('customer_phone', e.target.value)}
                                             placeholder="+1 (555) 000-0000"
-                                            className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                         />
                                     </div>
                                     {errors.customer_phone && (
-                                        <p className="text-xs text-red-500 mt-1">{errors.customer_phone}</p>
+                                        <p className="text-xs text-destructive mt-1">{errors.customer_phone}</p>
                                     )}
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
                                         Notes or Requests (Optional)
                                     </label>
                                     <textarea
@@ -489,43 +526,43 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                         value={data.customer_notes}
                                         onChange={(e) => setData('customer_notes', e.target.value)}
                                         placeholder="Any special accommodations..."
-                                        className="w-full px-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                     />
                                     {errors.customer_notes && (
-                                        <p className="text-xs text-red-500 mt-1">{errors.customer_notes}</p>
+                                        <p className="text-xs text-destructive mt-1">{errors.customer_notes}</p>
                                     )}
                                 </div>
                             </div>
 
                             {/* Reservation Summary Card */}
-                            <div className="md:col-span-5 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 flex flex-col justify-between">
+                            <div className="md:col-span-5 bg-card border border-border rounded-xl p-6 shadow-xs flex flex-col justify-between">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
+                                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
                                         Booking Summary
                                     </h3>
 
                                     <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
-                                            <span className="text-neutral-400">Service:</span>
-                                            <span className="font-semibold text-white">{selectedService.name}</span>
+                                        <div className="flex justify-between items-center pb-2 border-b border-border">
+                                            <span className="text-muted-foreground">Service:</span>
+                                            <span className="font-semibold text-foreground">{selectedService.name}</span>
                                         </div>
-                                        <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
-                                            <span className="text-neutral-400">Duration:</span>
-                                            <span className="font-medium text-neutral-200">
+                                        <div className="flex justify-between items-center pb-2 border-b border-border">
+                                            <span className="text-muted-foreground">Duration:</span>
+                                            <span className="font-medium text-foreground">
                                                 {selectedService.duration_minutes} mins
                                             </span>
                                         </div>
-                                        <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
-                                            <span className="text-neutral-400">Date:</span>
-                                            <span className="font-medium text-neutral-200">{data.date}</span>
+                                        <div className="flex justify-between items-center pb-2 border-b border-border">
+                                            <span className="text-muted-foreground">Date:</span>
+                                            <span className="font-medium text-foreground">{data.date}</span>
                                         </div>
-                                        <div className="flex justify-between items-center pb-2 border-b border-neutral-800">
-                                            <span className="text-neutral-400">Time:</span>
-                                            <span className="font-medium text-blue-400">{data.time}</span>
+                                        <div className="flex justify-between items-center pb-2 border-b border-border">
+                                            <span className="text-muted-foreground">Time:</span>
+                                            <span className="font-semibold text-primary">{data.time}</span>
                                         </div>
                                         <div className="flex justify-between items-center pt-2">
-                                            <span className="text-base font-semibold text-white">Total:</span>
-                                            <span className="text-lg font-bold text-emerald-400">
+                                            <span className="text-base font-semibold text-foreground">Total:</span>
+                                            <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
                                                 ${Number(selectedService.price).toFixed(2)}
                                             </span>
                                         </div>
@@ -533,16 +570,16 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                                 </div>
 
                                 {errors.time && (
-                                    <div className="mt-4 p-3 bg-red-950/50 border border-red-500/30 rounded-xl text-xs text-red-300">
+                                    <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-xs text-destructive">
                                         {errors.time}
                                     </div>
                                 )}
 
-                                <div className="mt-6 pt-4 border-t border-neutral-800">
+                                <div className="mt-6 pt-4 border-t border-border">
                                     <button
                                         type="submit"
                                         disabled={processing}
-                                        className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-xl shadow-blue-500/25 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                                        className="w-full py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm shadow-sm disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                                     >
                                         <CheckCircle2 className="w-4 h-4" />
                                         <span>{processing ? 'Confirming...' : 'Confirm Appointment'}</span>
@@ -555,7 +592,7 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
                             <button
                                 type="button"
                                 onClick={() => setStep(2)}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white"
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <ArrowLeft className="w-4 h-4" />
                                 <span>Change Time Slot</span>
@@ -566,8 +603,8 @@ export default function PublicBookingIndex({ project, services }: PublicBookingP
             </main>
 
             {/* Footer */}
-            <footer className="border-t border-neutral-900 py-6 text-center text-xs text-neutral-600">
-                <p>Powered by the Booking System • Secure slot reservations</p>
+            <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
+                <p>Powered by StudioSync • Secure slot reservations</p>
             </footer>
         </div>
     );

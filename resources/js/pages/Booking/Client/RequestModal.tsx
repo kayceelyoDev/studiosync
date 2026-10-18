@@ -208,7 +208,7 @@ export default function RequestModal({
                                             onClick={() => toggleDay(day.id)}
                                             className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
                                                 isSelected
-                                                    ? 'bg-blue-600 border-blue-600 text-white'
+                                                    ? 'bg-primary border-primary text-primary-foreground shadow-xs'
                                                     : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300'
                                             }`}
                                         >
@@ -336,7 +336,7 @@ export default function RequestModal({
                         <button
                             type="submit"
                             disabled={processing}
-                            className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all"
+                            className="px-6 py-2.5 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-xl shadow-sm disabled:opacity-50 transition-all"
                         >
                             {processing ? 'Submitting...' : 'Submit Request'}
                         </button>
