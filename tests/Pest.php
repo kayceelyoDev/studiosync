@@ -16,10 +16,23 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    ->in('Feature');
+    ->in(__DIR__.'/Feature');
 
-if (getcwd() && realpath(getcwd()) !== realpath(__DIR__.'/..') && file_exists(getcwd().'/tests/Pest.php')) {
-    require_once getcwd().'/tests/Pest.php';
+if (getcwd() && realpath(getcwd()) !== realpath(__DIR__.'/..')) {
+    $worktreeApp = getcwd().'/app/';
+    if (is_dir($worktreeApp)) {
+        spl_autoload_register(function (string $class) use ($worktreeApp): void {
+            if (str_starts_with($class, 'App\\')) {
+                $path = $worktreeApp.str_replace('\\', '/', substr($class, 4)).'.php';
+                if (file_exists($path)) {
+                    require_once $path;
+                }
+            }
+        }, true, true);
+    }
+    if (file_exists(getcwd().'/tests/Pest.php')) {
+        require_once getcwd().'/tests/Pest.php';
+    }
 }
 
 /*

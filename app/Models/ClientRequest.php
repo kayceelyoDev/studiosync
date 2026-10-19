@@ -118,4 +118,20 @@ class ClientRequest extends Model
     {
         return $query->where('status', RequestStatus::InProgress->value);
     }
+
+    /**
+     * Get parsed JSON payload from description if applicable.
+     *
+     * @return array<string, mixed>
+     */
+    public function getIntakeDataAttribute(): array
+    {
+        if (empty($this->description)) {
+            return [];
+        }
+
+        $decoded = json_decode($this->description, true);
+
+        return is_array($decoded) ? $decoded : ['notes' => $this->description];
+    }
 }

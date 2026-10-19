@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Head, Link, setLayoutProps } from '@inertiajs/react';
+import { Head, Link, setLayoutProps, usePage, useForm, router } from '@inertiajs/react';
 import {
     ChevronLeft,
     MonitorSmartphone,
@@ -33,7 +33,15 @@ import {
     Newspaper,
     Grid,
     Wrench,
+    ShieldCheck,
+    Plus,
+    Trash2,
+    Clock,
+    DollarSign,
+    X,
+    Settings
 } from 'lucide-react';
+import RequestModal from '../Booking/Client/RequestModal';
 
 interface ProjectAsset {
     id: number;
@@ -93,6 +101,15 @@ interface ProjectData {
         is_active: boolean;
         messages_count?: number;
     } | null;
+    booking_enabled?: boolean;
+    booking_public_token?: string | null;
+    booking_notification_email?: string | null;
+    booking_settings?: any;
+    booking_services?: any[];
+    bookingServices?: any[];
+    bookings?: any[];
+    client_requests?: any[];
+    clientRequests?: any[];
 }
 
 function getPublicLiveUrl(p: { project_url?: string | null; vercel_project_name?: string | null }): string | null {
@@ -110,7 +127,7 @@ function getPublicLiveUrl(p: { project_url?: string | null; vercel_project_name?
 }
 
 export default function ProjectShow({ project }: { project: ProjectData }) {
-    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code' | 'contact'>('preview');
+    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets' | 'deployments' | 'code' | 'contact' | 'booking'>('preview');
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
@@ -125,6 +142,142 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
     const assetsList = project.project_assets || project.projectAssets || [];
     const deploymentsList = project.deployments || [];
     const emailer = project.contact_emailer || project.contactEmailer;
+    const servicesList = project.booking_services || project.bookingServices || [];
+    const bookingsList = project.bookings || [];
+
+    const [isRequestModalOpen, setIsRequestModalOpen] = useState<boolean>(false);
+    const [copiedBookingUrl, setCopiedBookingUrl] = useState<boolean>(false);
+    const [bookingSubTab, setBookingSubTab] = useState<'services' | 'settings' | 'appointments'>('services');
+    const [serviceModalOpen, setServiceModalOpen] = useState<boolean>(false);
+    const [editingService, setEditingService] = useState<any | null>(null);
+
+    const { auth } = usePage().props as any;
+    const currentUserEmail = auth?.user?.email || '';
+
+    const pendingBookingRequest = useMemo(() => {
+        const reqs = project.client_requests || project.clientRequests || [];
+        return reqs.find((r: any) => r.category === 'booking_system' && r.status === 'pending');
+    }, [project.client_requests, project.clientRequests]);
+
+    const pendingIntake = useMemo(() => {
+        if (!pendingBookingRequest?.description) return null;
+        try {
+            return JSON.parse(pendingBookingRequest.description);
+        } catch {
+            return null;
+        }
+    }, [pendingBookingRequest]);
+
+    const bookingPublicUrl = project.booking_public_token
+        ? (typeof window !== 'undefined' ? `${window.location.origin}/book/${project.booking_public_token}` : `/book/${project.booking_public_token}`)
+        : '';
+
+    // Services form
+    const serviceForm = useForm({
+        name: '',
+        description: '',
+        duration_minutes: 30,
+        price: 50.0,
+        currency: 'USD',
+        is_active: true,
+    });
+
+    // Schedule Settings form
+    const bookingSettingsForm = useForm({
+        booking_notification_email: project.booking_notification_email || currentUserEmail || '',
+        booking_settings: {
+            start_time: project.booking_settings?.start_time || '09:00',
+            end_time: project.booking_settings?.end_time || '17:00',
+            days: project.booking_settings?.days || [1, 2, 3, 4, 5],
+        },
+    });
+
+    const openAddServiceModal = () => {
+        setEditingService(null);
+        serviceForm.setData({
+            name: '',
+            description: '',
+            duration_minutes: 30,
+            price: 50.0,
+            currency: 'USD',
+            is_active: true,
+        });
+        serviceForm.clearErrors();
+        setServiceModalOpen(true);
+    };
+
+    const openEditServiceModal = (service: any) => {
+        setEditingService(service);
+        serviceForm.setData({
+            name: service.name,
+            description: service.description || '',
+            duration_minutes: Number(service.duration_minutes),
+            price: Number(service.price),
+            currency: service.currency || 'USD',
+            is_active: Boolean(service.is_active),
+        });
+        serviceForm.clearErrors();
+        setServiceModalOpen(true);
+    };
+
+    const handleServiceSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editingService) {
+            serviceForm.put(`/projects/${project.id}/booking/services/${editingService.id}`, {
+                preserveScroll: true,
+                onSuccess: () => setServiceModalOpen(false),
+            });
+        } else {
+            serviceForm.post(`/projects/${project.id}/booking/services`, {
+                preserveScroll: true,
+                onSuccess: () => setServiceModalOpen(false),
+            });
+        }
+    };
+
+    const handleDeleteService = (serviceId: number) => {
+        if (confirm('Are you sure you want to delete this service?')) {
+            router.delete(`/projects/${project.id}/booking/services/${serviceId}`, {
+                preserveScroll: true,
+            });
+        }
+    };
+
+    const handleBookingSettingsSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        bookingSettingsForm.put(`/projects/${project.id}/booking/settings`, {
+            preserveScroll: true,
+        });
+    };
+
+    const toggleBookingSettingsDay = (dayId: number) => {
+        const currentDays = bookingSettingsForm.data.booking_settings?.days || [];
+        const updated = currentDays.includes(dayId)
+            ? currentDays.filter((d: number) => d !== dayId)
+            : [...currentDays, dayId].sort();
+        bookingSettingsForm.setData('booking_settings', {
+            ...bookingSettingsForm.data.booking_settings,
+            days: updated,
+        });
+    };
+
+    const handleUpdateBookingStatus = (bookingId: number, status: 'completed' | 'cancelled') => {
+        let reason: string | null = null;
+        if (status === 'cancelled') {
+            const promptVal = prompt('Cancel appointment? Enter optional cancellation reason (or click Cancel to abort):');
+            if (promptVal === null) return;
+            reason = promptVal.trim() || null;
+        } else if (status === 'completed') {
+            if (!confirm('Mark appointment as completed?')) return;
+        }
+
+        router.patch(`/projects/${project.id}/booking/${bookingId}/status`, {
+            status,
+            cancellation_reason: reason,
+        }, {
+            preserveScroll: true,
+        });
+    };
 
     // Set layout breadcrumbs
     setLayoutProps({
@@ -660,6 +813,24 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                                     }`}>
                                         {emailer.is_active ? 'Active' : 'Inactive'}
                                     </span>
+                                )}
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('booking')}
+                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                                    activeTab === 'booking'
+                                        ? 'border-primary text-primary font-semibold'
+                                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                                }`}
+                            >
+                                <Calendar className="w-4 h-4" />
+                                Booking
+                                {project.booking_enabled && (
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                )}
+                                {pendingBookingRequest && !project.booking_enabled && (
+                                    <span className="w-2 h-2 rounded-full bg-amber-500" />
                                 )}
                             </button>
                         </div>
@@ -1207,8 +1378,677 @@ export default function ProjectShow({ project }: { project: ProjectData }) {
                         </div>
                     )}
 
+                    {/* TAB 7: BOOKING SYSTEM */}
+                    {activeTab === 'booking' && (
+                        <div className="space-y-6 animate-in fade-in">
+                            {project.booking_enabled ? (
+                                <div className="space-y-6">
+                                    {/* Active Booking Top Header & Test Link */}
+                                    <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-card to-card border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xs">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                                    Booking System Active
+                                                </span>
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-foreground">
+                                                Manage Booking System & Offerings
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground max-w-xl">
+                                                Configure what services your site offers, adjust prices, set operating hours, and track appointments. Button placement in the website is managed by your administrator.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            {bookingPublicUrl ? (
+                                                <a
+                                                    href={bookingPublicUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-md transition-all flex items-center gap-2"
+                                                >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                    <span>Test Booking Portal</span>
+                                                </a>
+                                            ) : (
+                                                <span className="px-4 py-2.5 rounded-xl bg-muted text-muted-foreground text-xs font-medium border border-border">
+                                                    Portal link initializing...
+                                                </span>
+                                            )}
+                                            {bookingPublicUrl && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(bookingPublicUrl);
+                                                        setCopiedBookingUrl(true);
+                                                        setTimeout(() => setCopiedBookingUrl(false), 2000);
+                                                    }}
+                                                    className="px-4 py-2.5 rounded-xl bg-card hover:bg-muted text-foreground border border-border text-xs font-medium transition-colors flex items-center gap-2"
+                                                >
+                                                    {copiedBookingUrl ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
+                                                    <span>{copiedBookingUrl ? 'Link Copied!' : 'Copy Portal Link'}</span>
+                                                </button>
+                                            )}
+                                            <Link
+                                                href={`/projects/${project.id}/booking`}
+                                                className="px-4 py-2.5 rounded-xl bg-card hover:bg-muted text-foreground border border-border text-xs font-semibold transition-colors flex items-center gap-2 shadow-xs"
+                                            >
+                                                <Settings className="w-4 h-4 text-primary" />
+                                                <span>Full Booking Hub</span>
+                                            </Link>
+                                        </div>
+                                    </div>
+
+                                    {/* Secure Public URL Bar with Info */}
+                                    <div className="p-4 rounded-xl bg-card border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                                            <span className="font-semibold text-foreground shrink-0">Live Portal Link:</span>
+                                            <span className="font-mono text-muted-foreground truncate select-all">{bookingPublicUrl}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
+                                                Website integration managed by admin
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Sub-Navigation for Booking Management */}
+                                    <div className="flex items-center gap-2 border-b border-border pb-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setBookingSubTab('services')}
+                                            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                                                bookingSubTab === 'services'
+                                                    ? 'bg-primary text-primary-foreground shadow-xs'
+                                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            <Layers className="w-3.5 h-3.5" />
+                                            <span>Services & Pricing ({servicesList.length})</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBookingSubTab('settings')}
+                                            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                                                bookingSubTab === 'settings'
+                                                    ? 'bg-primary text-primary-foreground shadow-xs'
+                                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            <Settings className="w-3.5 h-3.5" />
+                                            <span>Hours & Settings</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBookingSubTab('appointments')}
+                                            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                                                bookingSubTab === 'appointments'
+                                                    ? 'bg-primary text-primary-foreground shadow-xs'
+                                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                            }`}
+                                        >
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            <span>Appointments ({bookingsList.length})</span>
+                                        </button>
+                                    </div>
+
+                                    {/* SUBTAB 1: SERVICES & PRICING */}
+                                    {bookingSubTab === 'services' && (
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-foreground">Services Offered</h4>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Configure what services this site offers, duration, and guest pricing.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={openAddServiceModal}
+                                                    className="px-3.5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    <span>Add Service</span>
+                                                </button>
+                                            </div>
+
+                                            {servicesList.length === 0 ? (
+                                                <div className="p-8 text-center bg-card border border-border rounded-xl">
+                                                    <Layers className="w-10 h-10 text-muted-foreground/50 mx-auto mb-2" />
+                                                    <h5 className="text-sm font-semibold text-foreground">No services configured</h5>
+                                                    <p className="text-xs text-muted-foreground mt-1 mb-4">
+                                                        Add your first service to let guests book appointments on your site.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={openAddServiceModal}
+                                                        className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                                                    >
+                                                        Add Your First Service
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {servicesList.map((srv: any) => (
+                                                        <div
+                                                            key={srv.id}
+                                                            className="p-5 rounded-xl bg-card border border-border shadow-xs flex flex-col justify-between gap-4"
+                                                        >
+                                                            <div className="space-y-2">
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div>
+                                                                        <h5 className="text-sm font-bold text-foreground">{srv.name}</h5>
+                                                                        {srv.description && (
+                                                                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                                                                {srv.description}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                    <span
+                                                                        className={`px-2 py-0.5 rounded text-[11px] font-semibold border shrink-0 ${
+                                                                            srv.is_active
+                                                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                                                                : 'bg-muted border-border text-muted-foreground'
+                                                                        }`}
+                                                                    >
+                                                                        {srv.is_active ? 'Active' : 'Inactive'}
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="flex flex-wrap items-center gap-3 pt-2 text-xs">
+                                                                    <span className="flex items-center gap-1 text-muted-foreground">
+                                                                        <Clock className="w-3.5 h-3.5 text-primary" />
+                                                                        <span>{srv.duration_minutes} mins</span>
+                                                                    </span>
+                                                                    <span className="flex items-center gap-1 font-semibold text-foreground">
+                                                                        <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                                                                        <span>{Number(srv.price).toFixed(2)} {srv.currency || 'USD'}</span>
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openEditServiceModal(srv)}
+                                                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-background hover:bg-muted border border-border text-foreground transition-colors flex items-center gap-1"
+                                                                >
+                                                                    <Edit3 className="w-3 h-3 text-muted-foreground" />
+                                                                    <span>Edit</span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleDeleteService(srv.id)}
+                                                                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors flex items-center gap-1"
+                                                                >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                    <span>Delete</span>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* SUBTAB 2: HOURS & SETTINGS */}
+                                    {bookingSubTab === 'settings' && (
+                                        <form onSubmit={handleBookingSettingsSubmit} className="p-6 bg-card border border-border rounded-xl shadow-xs space-y-6">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-foreground">Operating Schedule & Settings</h4>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    Set your operating hours, open days, and notification email for appointments.
+                                                </p>
+                                            </div>
+
+                                            {/* Notification Email */}
+                                            <div className="space-y-1.5">
+                                                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                                    Booking Notification Email
+                                                </label>
+                                                <input
+                                                    type="email"
+                                                    required
+                                                    value={bookingSettingsForm.data.booking_notification_email}
+                                                    onChange={(e) => bookingSettingsForm.setData('booking_notification_email', e.target.value)}
+                                                    placeholder="e.g. notifications@example.com"
+                                                    className="w-full max-w-md px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                                />
+                                                {bookingSettingsForm.errors.booking_notification_email && (
+                                                    <p className="text-xs text-destructive">{bookingSettingsForm.errors.booking_notification_email}</p>
+                                                )}
+                                            </div>
+
+                                            {/* Operating Hours */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+                                                <div className="space-y-1.5">
+                                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                                        Start Time
+                                                    </label>
+                                                    <input
+                                                        type="time"
+                                                        required
+                                                        value={bookingSettingsForm.data.booking_settings.start_time}
+                                                        onChange={(e) =>
+                                                            bookingSettingsForm.setData('booking_settings', {
+                                                                ...bookingSettingsForm.data.booking_settings,
+                                                                start_time: e.target.value,
+                                                            })
+                                                        }
+                                                        className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                                    />
+                                                    {bookingSettingsForm.errors['booking_settings.start_time'] && (
+                                                        <p className="text-xs text-destructive">{bookingSettingsForm.errors['booking_settings.start_time']}</p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                                        End Time
+                                                    </label>
+                                                    <input
+                                                        type="time"
+                                                        required
+                                                        value={bookingSettingsForm.data.booking_settings.end_time}
+                                                        onChange={(e) =>
+                                                            bookingSettingsForm.setData('booking_settings', {
+                                                                ...bookingSettingsForm.data.booking_settings,
+                                                                end_time: e.target.value,
+                                                            })
+                                                        }
+                                                        className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                                    />
+                                                    {bookingSettingsForm.errors['booking_settings.end_time'] && (
+                                                        <p className="text-xs text-destructive">{bookingSettingsForm.errors['booking_settings.end_time']}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Open Days */}
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                                    Open Days
+                                                </label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[
+                                                        { id: 1, label: 'Mon' },
+                                                        { id: 2, label: 'Tue' },
+                                                        { id: 3, label: 'Wed' },
+                                                        { id: 4, label: 'Thu' },
+                                                        { id: 5, label: 'Fri' },
+                                                        { id: 6, label: 'Sat' },
+                                                        { id: 7, label: 'Sun' },
+                                                    ].map((day) => {
+                                                        const currentDays = bookingSettingsForm.data.booking_settings?.days || [];
+                                                        const isChosen = currentDays.includes(day.id);
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={day.id}
+                                                                onClick={() => toggleBookingSettingsDay(day.id)}
+                                                                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                                                                    isChosen
+                                                                        ? 'bg-primary border-primary text-primary-foreground shadow-xs'
+                                                                        : 'bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+                                                                }`}
+                                                            >
+                                                                {day.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                {(bookingSettingsForm.data.booking_settings?.days || []).length === 0 && (
+                                                    <p className="text-xs text-amber-500 mt-1">
+                                                        Currently closed on all days (no slots will be available for booking).
+                                                    </p>
+                                                )}
+                                                {bookingSettingsForm.errors['booking_settings.days'] && (
+                                                    <p className="text-xs text-destructive">{bookingSettingsForm.errors['booking_settings.days']}</p>
+                                                )}
+                                            </div>
+
+                                            <div className="pt-2">
+                                                <button
+                                                    type="submit"
+                                                    disabled={bookingSettingsForm.processing}
+                                                    className="px-5 py-2.5 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm disabled:opacity-50 transition-all"
+                                                >
+                                                    {bookingSettingsForm.processing ? 'Saving...' : 'Save Settings'}
+                                                </button>
+                                            </div>
+                                        </form>
+                                    )}
+
+                                    {/* SUBTAB 3: APPOINTMENTS */}
+                                    {bookingSubTab === 'appointments' && (
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-foreground">Appointments for {project.project_name}</h4>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Recent guest reservations submitted through your booking portal.
+                                                    </p>
+                                                </div>
+                                                <Link
+                                                    href="/bookings"
+                                                    className="px-3.5 py-1.5 text-xs font-medium text-foreground bg-card border border-border hover:bg-muted rounded-lg transition-colors flex items-center gap-1.5"
+                                                >
+                                                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                                                    <span>View Central Hub</span>
+                                                </Link>
+                                            </div>
+
+                                            {bookingsList.length === 0 ? (
+                                                <div className="p-8 text-center bg-card border border-border rounded-xl">
+                                                    <Calendar className="w-10 h-10 text-muted-foreground/50 mx-auto mb-2" />
+                                                    <h5 className="text-sm font-semibold text-foreground">No appointments yet</h5>
+                                                    <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                                                        Guest reservations for this website will appear here. Click &quot;Test Booking Portal&quot; above to create a test reservation.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-xs">
+                                                    <table className="w-full text-left text-xs">
+                                                        <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase tracking-wider font-semibold">
+                                                            <tr>
+                                                                <th className="py-3 px-4">Guest</th>
+                                                                <th className="py-3 px-4">Service</th>
+                                                                <th className="py-3 px-4">Date & Time</th>
+                                                                <th className="py-3 px-4">Status</th>
+                                                                <th className="py-3 px-4 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-border">
+                                                            {bookingsList.map((b: any) => (
+                                                                <tr key={b.id} className="hover:bg-muted/30 transition-colors">
+                                                                    <td className="py-3 px-4">
+                                                                        <div className="font-semibold text-foreground">{b.customer_name}</div>
+                                                                        <div className="text-[11px] text-muted-foreground">{b.customer_email}</div>
+                                                                    </td>
+                                                                    <td className="py-3 px-4 text-foreground">
+                                                                        {b.booking_service?.name || b.bookingService?.name || 'Standard Appointment'}
+                                                                    </td>
+                                                                    <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">
+                                                                        {b.booking_date} at {b.booking_time?.slice(0, 5)}
+                                                                    </td>
+                                                                    <td className="py-3 px-4">
+                                                                        <span
+                                                                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                                                                                b.status === 'confirmed'
+                                                                                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                                                                    : b.status === 'completed'
+                                                                                    ? 'bg-indigo-500/10 text-indigo-500 border border-indigo-500/20'
+                                                                                    : 'bg-destructive/10 text-destructive border border-destructive/20'
+                                                                            }`}
+                                                                        >
+                                                                            {b.status}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-3 px-4 text-right">
+                                                                        {b.status === 'confirmed' && (
+                                                                            <div className="flex items-center justify-end gap-1.5">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleUpdateBookingStatus(b.id, 'completed')}
+                                                                                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+                                                                                >
+                                                                                    Complete
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleUpdateBookingStatus(b.id, 'cancelled')}
+                                                                                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                                                                                >
+                                                                                    Cancel
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : pendingBookingRequest ? (
+                                <div className="p-8 rounded-2xl bg-amber-500/5 border border-amber-500/20 text-center max-w-xl mx-auto space-y-4">
+                                    <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
+                                        <RotateCw className="w-6 h-6 animate-spin" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                            Request Under Admin Review
+                                        </span>
+                                        <h3 className="text-lg font-bold text-foreground mt-2">
+                                            Booking System Pending Activation
+                                        </h3>
+                                        <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                                            Your request is being configured by our admin team. Once approved, the booking portal and self-management hub will activate automatically.
+                                        </p>
+                                    </div>
+
+                                    {pendingIntake && (
+                                        <div className="p-4 rounded-xl bg-card border border-border text-left space-y-2 mt-4 text-xs">
+                                            <div className="font-semibold text-foreground flex items-center justify-between">
+                                                <span>Requested Configuration</span>
+                                                <span className="text-[11px] text-amber-500 font-medium">Pending Approval</span>
+                                            </div>
+                                            {pendingIntake.notification_email && (
+                                                <p className="text-muted-foreground">
+                                                    • Alert Email: <span className="font-mono text-foreground">{pendingIntake.notification_email}</span>
+                                                </p>
+                                            )}
+                                            {pendingIntake.services && pendingIntake.services.length > 0 && (
+                                                <div className="mt-2 space-y-1">
+                                                    <span className="text-[11px] text-muted-foreground uppercase font-semibold">
+                                                        Requested Services ({pendingIntake.services.length}):
+                                                    </span>
+                                                    <ul className="pl-4 list-disc text-muted-foreground space-y-0.5">
+                                                        {pendingIntake.services.map((svc: any, idx: number) => (
+                                                            <li key={idx}>
+                                                                <span className="text-foreground font-medium">{svc.name}</span>
+                                                                {' — '}${Number(svc.price).toFixed(2)} ({svc.duration_minutes} mins)
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-8 sm:p-12 rounded-2xl bg-card border border-border shadow-sm text-center max-w-2xl mx-auto space-y-6">
+                                    <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                                        <Calendar className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-xl font-bold text-foreground">
+                                            Add Direct Online Booking to {project.project_name}
+                                        </h3>
+                                        <p className="text-xs sm:text-sm text-muted-foreground max-w-lg mx-auto">
+                                            Allow visitors to view your services, check real-time open slots, and schedule appointments directly on your site.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                                            <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Dynamic Slots</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Zero double bookings. Automatically calculates availability.
+                                            </p>
+                                        </div>
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                                            <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Self-Managed</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Update service prices and durations at any time.
+                                            </p>
+                                        </div>
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                                            <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Instant Alerts</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Get notified immediately when a guest books a slot.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsRequestModalOpen(true)}
+                                            className="px-6 py-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm shadow-md transition-all inline-flex items-center gap-2"
+                                        >
+                                            <Calendar className="w-4 h-4" />
+                                            <span>Request Booking Feature</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </div>
+
+            {/* Client Booking Feature Request Modal */}
+            <RequestModal
+                projectId={project.id}
+                projectName={project.project_name}
+                userEmail={currentUserEmail}
+                isOpen={isRequestModalOpen}
+                onClose={() => setIsRequestModalOpen(false)}
+            />
+
+            {/* Service Modal for Adding / Editing Booking Services */}
+            {serviceModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs">
+                    <div className="relative w-full max-w-lg p-6 bg-card border border-border rounded-2xl shadow-xl space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-border">
+                            <h3 className="text-base font-bold text-foreground">
+                                {editingService ? 'Edit Service' : 'Add New Service'}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setServiceModalOpen(false)}
+                                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleServiceSubmit} className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Service Name *
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={serviceForm.data.name}
+                                    onChange={(e) => serviceForm.setData('name', e.target.value)}
+                                    placeholder="e.g. Initial Consultation, Haircut, 1-on-1 Coaching"
+                                    className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                />
+                                {serviceForm.errors.name && (
+                                    <p className="text-xs text-destructive">{serviceForm.errors.name}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                    Description (Optional)
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={serviceForm.data.description}
+                                    onChange={(e) => serviceForm.setData('description', e.target.value)}
+                                    placeholder="Brief overview of what is included in this appointment session..."
+                                    className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        Duration (Minutes) *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        required
+                                        min={5}
+                                        max={480}
+                                        step={5}
+                                        value={serviceForm.data.duration_minutes}
+                                        onChange={(e) => serviceForm.setData('duration_minutes', Number(e.target.value))}
+                                        className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        Price *
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                                        <input
+                                            type="number"
+                                            required
+                                            min={0}
+                                            step={0.01}
+                                            value={serviceForm.data.price}
+                                            onChange={(e) => serviceForm.setData('price', Number(e.target.value))}
+                                            className="w-full pl-7 pr-3 py-2 bg-background border border-border rounded-lg text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-1">
+                                <input
+                                    type="checkbox"
+                                    id="is_active_checkbox"
+                                    checked={serviceForm.data.is_active}
+                                    onChange={(e) => serviceForm.setData('is_active', e.target.checked)}
+                                    className="rounded border-border text-primary focus:ring-primary"
+                                />
+                                <label htmlFor="is_active_checkbox" className="text-xs text-foreground font-medium select-none">
+                                    Active and available for guest booking
+                                </label>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-4 border-t border-border">
+                                <button
+                                    type="button"
+                                    onClick={() => setServiceModalOpen(false)}
+                                    className="px-4 py-2 text-xs font-medium rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={serviceForm.processing}
+                                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs disabled:opacity-50 transition-colors"
+                                >
+                                    {serviceForm.processing ? 'Saving...' : editingService ? 'Save Changes' : 'Create Service'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

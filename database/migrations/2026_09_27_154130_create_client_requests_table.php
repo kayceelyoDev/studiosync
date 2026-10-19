@@ -13,10 +13,10 @@ return new class extends Migration
     {
         Schema::create('client_requests', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('project_id')->constrained()->onDelete('cascade');
-            $table->foreignId('admin_id')->nullable()->constrained('users')->onDelete('set null');
-            $table->string('category');
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('project_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('admin_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('category')->default('booking_system');
             $table->string('title');
             $table->text('description');
             $table->string('attachment_path')->nullable();

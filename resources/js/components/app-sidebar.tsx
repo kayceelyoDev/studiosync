@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, LayoutGrid, ClipboardList } from 'lucide-react';
+import { BookOpen, LayoutGrid, ClipboardList, Calendar } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -25,6 +25,11 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
+        title: 'Bookings',
+        href: '/bookings',
+        icon: Calendar,
+    },
+    {
         title: 'Requests',
         href: requestsIndex(),
         icon: ClipboardList,
@@ -36,6 +41,11 @@ const adminNavItems: NavItem[] = [
         title: 'Client Projects',
         href: '/admin/projects',
         icon: BookOpen,
+    },
+    {
+        title: 'Bookings Hub',
+        href: '/bookings',
+        icon: Calendar,
     },
     {
         title: 'Service Requests',

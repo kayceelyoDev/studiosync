@@ -22,8 +22,15 @@ import {
     Clock,
     AlertCircle,
     Rocket,
-    Send
+    Send,
+    ShieldCheck,
+    Plus,
+    Trash2,
+    Code,
+    Key,
+    RefreshCw
 } from 'lucide-react';
+import { router } from '@inertiajs/react';
 
 interface ProjectAsset {
     id: number;
@@ -76,20 +83,213 @@ interface AdminProjectData {
         is_active: boolean;
         messages_count?: number;
     } | null;
+    booking_enabled?: boolean;
+    booking_public_token?: string | null;
+    booking_notification_email?: string | null;
+    booking_settings?: any;
+    booking_services?: any[];
+    bookingServices?: any[];
+    client_requests?: any[];
+    clientRequests?: any[];
 }
 
-export default function AdminWorkspacesShow({ workspace }: { workspace: AdminProjectData }) {
-    const [activeTab, setActiveTab] = useState<'preview' | 'specs' | 'assets'>('preview');
+export default function AdminWorkspacesShow({
+    workspace,
+    hasBookingCta = false,
+}: {
+    workspace: AdminProjectData;
+    hasBookingCta?: boolean;
+}) {
+    const [activeTab, setActiveTab] = useState<'preview' | 'code' | 'specs' | 'assets'>('preview');
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
     const [iframeKey, setIframeKey] = useState<number>(0);
     const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+    const [togglingBooking, setTogglingBooking] = useState<boolean>(false);
+    const [initializingBooking, setInitializingBooking] = useState<boolean>(false);
+    const [updatingServices, setUpdatingServices] = useState<boolean>(false);
+    const [savingHtml, setSavingHtml] = useState<boolean>(false);
+    const [actionLoading, setActionLoading] = useState<boolean>(false);
+    const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
+    const [copiedEntry, setCopiedEntry] = useState<boolean>(false);
+
+    const pendingBookingReq = useMemo(() => {
+        const reqs = workspace.client_requests || workspace.clientRequests || [];
+        return reqs.find((r: any) => r.category === 'booking_system' && r.status === 'pending');
+    }, [workspace.client_requests, workspace.clientRequests]);
+
+    const intakePayload = useMemo(() => {
+        if (!pendingBookingReq?.description) return null;
+        try {
+            return JSON.parse(pendingBookingReq.description);
+        } catch (e) {
+            return null;
+        }
+    }, [pendingBookingReq]);
+
+    // Service list for admin review/modification before approving or active editing
+    const defaultServices = useMemo(() => {
+        if (intakePayload?.services && Array.isArray(intakePayload.services) && intakePayload.services.length > 0) {
+            return intakePayload.services.map((s: any) => ({
+                id: s.id,
+                name: s.name || '',
+                description: s.description || '',
+                duration_minutes: Number(s.duration_minutes || 30),
+                price: Number(s.price || 0),
+                currency: s.currency || 'USD',
+            }));
+        }
+        const existing = workspace.booking_services || workspace.bookingServices || [];
+        if (existing.length > 0) {
+            return existing.map((s: any) => ({
+                id: s.id,
+                name: s.name || '',
+                description: s.description || '',
+                duration_minutes: Number(s.duration_minutes || 30),
+                price: Number(s.price || 0),
+                currency: s.currency || 'USD',
+            }));
+        }
+        return [
+            {
+                name: 'General Consultation',
+                description: 'Initial consultation appointment',
+                duration_minutes: 30,
+                price: 50.00,
+                currency: 'USD',
+            },
+        ];
+    }, [intakePayload, workspace.booking_services, workspace.bookingServices]);
+
+    const [servicesList, setServicesList] = useState<any[]>(defaultServices);
+    const [notificationEmail, setNotificationEmail] = useState<string>(
+        intakePayload?.notification_email || workspace.booking_notification_email || workspace.user?.email || ''
+    );
+    const [autoInjectCta, setAutoInjectCta] = useState<boolean>(true);
+
+    const handleAddService = () => {
+        setServicesList((prev) => [
+            ...prev,
+            {
+                name: '',
+                description: '',
+                duration_minutes: 30,
+                price: 50.00,
+                currency: 'USD',
+            },
+        ]);
+    };
+
+    const handleUpdateService = (idx: number, field: string, value: any) => {
+        setServicesList((prev) => {
+            const next = [...prev];
+            next[idx] = { ...next[idx], [field]: value };
+            return next;
+        });
+    };
+
+    const handleRemoveService = (idx: number) => {
+        setServicesList((prev) => prev.filter((_, i) => i !== idx));
+    };
+
+    const handleToggleBooking = () => {
+        setTogglingBooking(true);
+        router.patch(`/admin/projects/${workspace.id}/booking/toggle`, {}, {
+            onFinish: () => setTogglingBooking(false),
+        });
+    };
+
+    const handleInitializeBooking = () => {
+        if (confirm('Initialize and enable the booking system with these services?')) {
+            setInitializingBooking(true);
+            router.post(`/admin/projects/${workspace.id}/booking/initialize`, {
+                services: servicesList,
+                notification_email: notificationEmail,
+                auto_inject_cta: autoInjectCta,
+            }, {
+                onFinish: () => setInitializingBooking(false),
+            });
+        }
+    };
+
+    const handleSaveServices = () => {
+        setUpdatingServices(true);
+        router.put(`/admin/projects/${workspace.id}/booking/services`, {
+            services: servicesList,
+            notification_email: notificationEmail,
+        }, {
+            onFinish: () => setUpdatingServices(false),
+        });
+    };
+
+    const handleInjectCta = () => {
+        setActionLoading(true);
+        router.post(`/admin/projects/${workspace.id}/booking/inject-cta`, {}, {
+            onFinish: () => setActionLoading(false),
+        });
+    };
+
+    const handleRemoveCta = () => {
+        if (confirm('Remove the booking CTA from this project website code?')) {
+            setActionLoading(true);
+            router.post(`/admin/projects/${workspace.id}/booking/remove-cta`, {}, {
+                onFinish: () => setActionLoading(false),
+            });
+        }
+    };
+
+    const handleRotateKey = () => {
+        if (confirm('Rotate the dedicated booking key for this project? Any old links will be invalidated.')) {
+            setActionLoading(true);
+            router.post(`/admin/projects/${workspace.id}/booking/rotate-token`, {}, {
+                onFinish: () => setActionLoading(false),
+            });
+        }
+    };
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const entryUrl = workspace.booking_public_token ? `${origin}/book/entry/${workspace.booking_public_token}` : '';
+    const embedSnippet = `<a href="${entryUrl}" class="ss-booking-cta-btn" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background-color:#10b981;color:#ffffff;font-size:14px;font-weight:600;border-radius:8px;text-decoration:none;">Book Now</a>`;
 
     const { data, setData, put, processing, errors } = useForm({
         status: workspace.status || 'pending',
         generated_prompt: workspace.generated_prompt || '',
         project_url: workspace.project_url || '',
+        html_content: workspace.html_content || '',
     });
+
+    const handleSaveHtml = () => {
+        setSavingHtml(true);
+        router.put(`/admin/projects/${workspace.id}`, {
+            status: data.status,
+            generated_prompt: data.generated_prompt,
+            project_url: data.project_url,
+            html_content: data.html_content,
+        }, {
+            onFinish: () => {
+                setSavingHtml(false);
+                setIframeKey((k) => k + 1);
+            },
+        });
+    };
+
+    const handleInsertCtaIntoEditor = () => {
+        if (!data.html_content) return;
+        const snippet = `\n<!-- SS-BOOKING-CTA-START -->\n${embedSnippet}\n<!-- SS-BOOKING-CTA-END -->\n`;
+        let updated = data.html_content;
+        if (updated.includes('<!-- SS-BOOKING-CTA-START -->')) {
+            updated = updated.replace(/<!-- SS-BOOKING-CTA-START -->[\s\S]*?<!-- SS-BOOKING-CTA-END -->/, snippet.trim());
+        } else if (updated.toLowerCase().includes('</nav>')) {
+            updated = updated.replace(/<\/nav>/i, `${snippet}</nav>`);
+        } else if (updated.toLowerCase().includes('</header>')) {
+            updated = updated.replace(/<\/header>/i, `${snippet}</header>`);
+        } else if (updated.toLowerCase().includes('</body>')) {
+            updated = updated.replace(/<\/body>/i, `${snippet}</body>`);
+        } else {
+            updated += snippet;
+        }
+        setData('html_content', updated);
+    };
 
     setLayoutProps({
         breadcrumbs: [
@@ -224,6 +424,18 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                     </button>
 
                                     <button
+                                        onClick={() => setActiveTab('code')}
+                                        className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                                            activeTab === 'code'
+                                                ? 'bg-primary text-primary-foreground shadow-xs'
+                                                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                                        }`}
+                                    >
+                                        <Code className="w-3.5 h-3.5" />
+                                        Website Code
+                                    </button>
+
+                                    <button
                                         onClick={() => setActiveTab('specs')}
                                         className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
                                             activeTab === 'specs'
@@ -307,6 +519,76 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                             </p>
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Tab: Website Code Editor */}
+                            {activeTab === 'code' && (
+                                <div className="p-4 bg-card rounded-xl border border-border shadow-xs space-y-4">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-bold text-foreground">
+                                                    Live Website HTML Code
+                                                </h3>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                                    hasBookingCta
+                                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                                        : 'bg-muted border-border text-muted-foreground'
+                                                }`}>
+                                                    {hasBookingCta ? 'Booking CTA Injected' : 'No Booking CTA in Code'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                Edit website HTML directly or insert the booking link CTA into the page markup.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleInsertCtaIntoEditor}
+                                                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center gap-1.5"
+                                                title="Insert or update booking CTA inside HTML"
+                                            >
+                                                <Code className="w-3.5 h-3.5" />
+                                                <span>Insert Booking CTA</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(embedSnippet);
+                                                    setCopiedSnippet(true);
+                                                    setTimeout(() => setCopiedSnippet(false), 2000);
+                                                }}
+                                                className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted hover:bg-muted/80 text-foreground transition-colors flex items-center gap-1"
+                                                title="Copy embed snippet"
+                                            >
+                                                {copiedSnippet ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                                <span>{copiedSnippet ? 'Copied' : 'Copy CTA'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={savingHtml}
+                                                onClick={handleSaveHtml}
+                                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs transition-colors flex items-center gap-1.5"
+                                            >
+                                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                                <span>{savingHtml ? 'Saving...' : 'Save Website HTML'}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="relative">
+                                        <textarea
+                                            value={data.html_content}
+                                            onChange={(e) => setData('html_content', e.target.value)}
+                                            rows={24}
+                                            className="w-full font-mono text-xs p-4 bg-zinc-950 text-zinc-100 dark:bg-zinc-950 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 leading-relaxed resize-y select-text"
+                                            placeholder="<!DOCTYPE html><html>...</html>"
+                                            spellCheck={false}
+                                        />
+                                    </div>
                                 </div>
                             )}
 
@@ -502,6 +784,556 @@ export default function AdminWorkspacesShow({ workspace }: { workspace: AdminPro
                                     <Mail className="w-4 h-4" />
                                     {workspace.contact_emailer ? 'Manage & Deploy Emailer' : 'Configure Emailer'}
                                 </Link>
+                            </div>
+
+                            {/* Booking Feature Admin Panel */}
+                            <div className="bg-card rounded-xl border border-border shadow-xs p-5 space-y-4">
+                                <div className="flex items-center justify-between pb-3 border-b border-border">
+                                    <div className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-primary" />
+                                        <h3 className="font-semibold text-foreground text-xs uppercase tracking-wider">
+                                            Booking System Feature
+                                        </h3>
+                                    </div>
+                                    <span
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                            workspace.booking_enabled
+                                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                                : 'bg-muted border-border text-muted-foreground'
+                                        }`}
+                                    >
+                                        {workspace.booking_enabled ? 'Active' : 'Disabled'}
+                                    </span>
+                                </div>
+
+                                {/* Pending Request Banner with Service Customization */}
+                                {pendingBookingReq && (
+                                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-xs font-semibold text-amber-500">
+                                                <AlertCircle className="w-4 h-4" />
+                                                <span>Review & Finalize Booking Request</span>
+                                            </div>
+                                            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-500">
+                                                Pending Review
+                                            </span>
+                                        </div>
+
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Review and customize the client's requested booking services, notification email, and code injection options before approving.
+                                        </p>
+
+                                        {/* Notification Email Field */}
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                                                Alert / Notification Email
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={notificationEmail}
+                                                onChange={(e) => setNotificationEmail(e.target.value)}
+                                                placeholder="alerts@clientdomain.com"
+                                                className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono"
+                                            />
+                                        </div>
+
+                                        {/* Services Configuration Table/Editor */}
+                                        <div className="space-y-2 pt-1 border-t border-amber-500/20">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
+                                                    Services to Initialize ({servicesList.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddService}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    <span>Add Service</span>
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                {servicesList.map((svc: any, idx: number) => (
+                                                    <div
+                                                        key={idx}
+                                                        className="p-2.5 rounded-lg bg-background border border-border space-y-2 text-xs"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={svc.name}
+                                                                onChange={(e) => handleUpdateService(idx, 'name', e.target.value)}
+                                                                placeholder="Service Name (e.g. 60m Massage)"
+                                                                className="flex-1 px-2 py-1 bg-muted/40 border border-border rounded text-xs text-foreground font-medium"
+                                                            />
+                                                            {servicesList.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveService(idx)}
+                                                                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted transition-colors"
+                                                                    title="Remove Service"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block mb-0.5">Duration (mins)</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min={5}
+                                                                    max={480}
+                                                                    step={5}
+                                                                    value={svc.duration_minutes}
+                                                                    onChange={(e) => handleUpdateService(idx, 'duration_minutes', Number(e.target.value))}
+                                                                    className="w-full px-2 py-1 bg-muted/40 border border-border rounded text-xs text-foreground"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block mb-0.5">Price ($)</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step={0.01}
+                                                                    value={svc.price}
+                                                                    onChange={(e) => handleUpdateService(idx, 'price', Number(e.target.value))}
+                                                                    className="w-full px-2 py-1 bg-muted/40 border border-border rounded text-xs text-foreground"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <input
+                                                                type="text"
+                                                                value={svc.description || ''}
+                                                                onChange={(e) => handleUpdateService(idx, 'description', e.target.value)}
+                                                                placeholder="Optional service details / description..."
+                                                                className="w-full px-2 py-1 bg-muted/40 border border-border rounded text-[11px] text-muted-foreground"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Auto Code Injection Checkbox */}
+                                        <div className="pt-2 border-t border-amber-500/20">
+                                            <label className="flex items-start gap-2 cursor-pointer text-xs">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={autoInjectCta}
+                                                    onChange={(e) => setAutoInjectCta(e.target.checked)}
+                                                    className="mt-0.5 rounded border-border text-primary focus:ring-primary/50"
+                                                />
+                                                <span className="text-foreground">
+                                                    Automatically inject <strong>"Book Now" CTA link</strong> into project website HTML code
+                                                </span>
+                                            </label>
+                                        </div>
+
+                                        {/* Approve Button */}
+                                        <button
+                                            type="button"
+                                            disabled={initializingBooking}
+                                            onClick={handleInitializeBooking}
+                                            className="w-full py-2.5 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <ShieldCheck className="w-4 h-4" />
+                                            <span>{initializingBooking ? 'Approving & Initializing...' : 'Approve & Initialize Booking'}</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Admin Direct Booking Setup (when no pending request exists) */}
+                                {!workspace.booking_enabled && !pendingBookingReq && (
+                                    <div className="p-4 rounded-xl bg-card border border-border space-y-4 text-xs">
+                                        <div>
+                                            <div className="flex items-center gap-2 font-semibold text-foreground text-xs">
+                                                <Calendar className="w-4 h-4 text-primary" />
+                                                <span>Initialize Booking Feature</span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground mt-1">
+                                                Configure initial service tiers and enable appointment booking directly for this project.
+                                            </p>
+                                        </div>
+
+                                        {/* Notification Email Field */}
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                                                Alert / Notification Email
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={notificationEmail}
+                                                onChange={(e) => setNotificationEmail(e.target.value)}
+                                                placeholder="alerts@clientdomain.com"
+                                                className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono"
+                                            />
+                                        </div>
+
+                                        {/* Services Configuration Table/Editor */}
+                                        <div className="space-y-2 pt-1 border-t border-border">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wider">
+                                                    Initial Services ({servicesList.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddService}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    <span>Add Service</span>
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                                {servicesList.map((svc: any, idx: number) => (
+                                                    <div
+                                                        key={idx}
+                                                        className="p-2.5 rounded-lg bg-muted/30 border border-border space-y-2 text-xs"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={svc.name}
+                                                                onChange={(e) => handleUpdateService(idx, 'name', e.target.value)}
+                                                                placeholder="Service Name"
+                                                                className="flex-1 px-2 py-1 bg-background border border-border rounded text-xs text-foreground font-medium"
+                                                            />
+                                                            {servicesList.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveService(idx)}
+                                                                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted transition-colors"
+                                                                    title="Remove Service"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block mb-0.5">Duration (mins)</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min={5}
+                                                                    max={480}
+                                                                    step={5}
+                                                                    value={svc.duration_minutes}
+                                                                    onChange={(e) => handleUpdateService(idx, 'duration_minutes', Number(e.target.value))}
+                                                                    className="w-full px-2 py-1 bg-background border border-border rounded text-xs text-foreground"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block mb-0.5">Price ($)</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step={0.01}
+                                                                    value={svc.price}
+                                                                    onChange={(e) => handleUpdateService(idx, 'price', Number(e.target.value))}
+                                                                    className="w-full px-2 py-1 bg-background border border-border rounded text-xs text-foreground"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <input
+                                                                type="text"
+                                                                value={svc.description || ''}
+                                                                onChange={(e) => handleUpdateService(idx, 'description', e.target.value)}
+                                                                placeholder="Optional service details / description..."
+                                                                className="w-full px-2 py-1 bg-background border border-border rounded text-[11px] text-muted-foreground"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Auto Code Injection Checkbox */}
+                                        <div className="pt-2 border-t border-border">
+                                            <label className="flex items-start gap-2 cursor-pointer text-xs">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={autoInjectCta}
+                                                    onChange={(e) => setAutoInjectCta(e.target.checked)}
+                                                    className="mt-0.5 rounded border-border text-primary focus:ring-primary/50"
+                                                />
+                                                <span className="text-foreground">
+                                                    Automatically inject <strong>"Book Now" CTA link</strong> into website code
+                                                </span>
+                                            </label>
+                                        </div>
+
+                                        {/* Initialize Button */}
+                                        <button
+                                            type="button"
+                                            disabled={initializingBooking}
+                                            onClick={handleInitializeBooking}
+                                            className="w-full py-2.5 px-3 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <Calendar className="w-4 h-4" />
+                                            <span>{initializingBooking ? 'Initializing Booking...' : 'Initialize Booking System'}</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Active Booking Feature Controls */}
+                                {workspace.booking_enabled && workspace.booking_public_token && (
+                                    <div className="space-y-4 pt-2">
+                                        {/* Website Code Injection Section */}
+                                        <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-3 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                                    <Code className="w-3.5 h-3.5 text-primary" />
+                                                    Website Code Injection
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                                    hasBookingCta
+                                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                                        : 'bg-muted border-border text-muted-foreground'
+                                                }`}>
+                                                    {hasBookingCta ? 'Injected in HTML' : 'Not Injected'}
+                                                </span>
+                                            </div>
+
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {hasBookingCta
+                                                    ? 'Booking CTA button is active inside project HTML code. Guests can click it to schedule appointments.'
+                                                    : 'CTA is not currently in the website code. Inject it automatically or copy embed code below.'}
+                                            </p>
+
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={actionLoading}
+                                                    onClick={handleInjectCta}
+                                                    className="flex-1 py-1.5 px-2.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs transition-colors text-center"
+                                                >
+                                                    {hasBookingCta ? 'Update Code CTA' : 'Inject Booking CTA'}
+                                                </button>
+                                                {hasBookingCta && (
+                                                    <button
+                                                        type="button"
+                                                        disabled={actionLoading}
+                                                        onClick={handleRemoveCta}
+                                                        className="py-1.5 px-2.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
+                                                    >
+                                                        Remove CTA
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(embedSnippet);
+                                                        setCopiedSnippet(true);
+                                                        setTimeout(() => setCopiedSnippet(false), 2000);
+                                                    }}
+                                                    className="py-1.5 px-2.5 text-xs font-medium rounded-lg bg-background border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1"
+                                                    title="Copy HTML snippet for manual embedding"
+                                                >
+                                                    {copiedSnippet ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                                    <span>{copiedSnippet ? 'Copied' : 'Copy HTML'}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Dedicated Key & Dynamic Portal Link */}
+                                        <div className="space-y-2 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-semibold text-foreground flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                                                    <Key className="w-3.5 h-3.5 text-primary" />
+                                                    Dynamic Portal Link & Security
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    disabled={actionLoading}
+                                                    onClick={handleRotateKey}
+                                                    className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
+                                                >
+                                                    <RefreshCw className="w-3.5 h-3.5" />
+                                                    <span>Rotate Key</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Entry URL that creates fresh expiring tokens */}
+                                            <div className="space-y-1">
+                                                <div className="text-[10px] text-muted-foreground">Dynamic Visitor Entry URL:</div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <input
+                                                        type="text"
+                                                        readOnly
+                                                        value={entryUrl}
+                                                        className="flex-1 px-2.5 py-1.5 text-xs bg-muted/60 border border-border rounded-lg text-foreground font-mono select-all truncate"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(entryUrl);
+                                                            setCopiedEntry(true);
+                                                            setTimeout(() => setCopiedEntry(false), 2000);
+                                                        }}
+                                                        className="p-1.5 text-xs rounded-lg bg-muted border border-border hover:text-foreground text-muted-foreground transition-colors"
+                                                        title="Copy Dynamic Entry URL"
+                                                    >
+                                                        {copiedEntry ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                                    </button>
+                                                    <a
+                                                        href={entryUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="p-1.5 text-xs rounded-lg bg-muted border border-border hover:text-foreground text-muted-foreground transition-colors"
+                                                        title="Test Dynamic Booking Entry"
+                                                    >
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </a>
+                                                </div>
+                                            </div>
+
+                                            {/* Dedicated Master Key */}
+                                            <div className="space-y-1 pt-1">
+                                                <div className="text-[10px] text-muted-foreground">Dedicated Project Key:</div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <input
+                                                        type="text"
+                                                        readOnly
+                                                        value={workspace.booking_public_token}
+                                                        className="flex-1 px-2.5 py-1.5 text-xs bg-muted/40 border border-border rounded-lg text-muted-foreground font-mono select-all truncate text-[11px]"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(workspace.booking_public_token || '');
+                                                            setCopiedUrl(true);
+                                                            setTimeout(() => setCopiedUrl(false), 2000);
+                                                        }}
+                                                        className="p-1.5 text-xs rounded-lg bg-muted border border-border hover:text-foreground text-muted-foreground transition-colors"
+                                                        title="Copy Master Key"
+                                                    >
+                                                        {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Configured Services & Management */}
+                                        <div className="p-3.5 rounded-xl bg-card border border-border space-y-3 text-xs">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-semibold text-foreground text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                                                    Manage Services ({servicesList.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddService}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    <span>Add Service</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Notification Email */}
+                                            <div>
+                                                <span className="text-[10px] text-muted-foreground block mb-0.5 font-medium">Notification Email:</span>
+                                                <input
+                                                    type="email"
+                                                    value={notificationEmail}
+                                                    onChange={(e) => setNotificationEmail(e.target.value)}
+                                                    className="w-full px-2 py-1 text-xs bg-background border border-border rounded text-foreground font-mono"
+                                                    placeholder="support@client.com"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                                {servicesList.map((svc: any, idx: number) => (
+                                                    <div key={idx} className="p-2.5 rounded-lg bg-muted/30 border border-border space-y-1.5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <input
+                                                                type="text"
+                                                                value={svc.name}
+                                                                onChange={(e) => handleUpdateService(idx, 'name', e.target.value)}
+                                                                placeholder="Service name"
+                                                                className="flex-1 px-2 py-1 bg-background border border-border rounded text-xs text-foreground font-semibold"
+                                                            />
+                                                            {servicesList.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveService(idx)}
+                                                                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted"
+                                                                    title="Remove"
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block">Duration (min)</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min={5}
+                                                                    max={480}
+                                                                    step={5}
+                                                                    value={svc.duration_minutes}
+                                                                    onChange={(e) => handleUpdateService(idx, 'duration_minutes', Number(e.target.value))}
+                                                                    className="w-full px-2 py-0.5 bg-background border border-border rounded text-xs text-foreground"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block">Price ($)</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step={0.01}
+                                                                    value={svc.price}
+                                                                    onChange={(e) => handleUpdateService(idx, 'price', Number(e.target.value))}
+                                                                    className="w-full px-2 py-0.5 bg-background border border-border rounded text-xs text-foreground"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                disabled={updatingServices}
+                                                onClick={handleSaveServices}
+                                                className="w-full py-1.5 px-3 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                                            >
+                                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                                <span>{updatingServices ? 'Saving Services...' : 'Save Services & Settings'}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Toggle Feature Button */}
+                                <div>
+                                    <button
+                                        type="button"
+                                        disabled={togglingBooking}
+                                        onClick={handleToggleBooking}
+                                        className={`w-full py-2 px-3 text-xs font-semibold rounded-lg border transition-colors ${
+                                            workspace.booking_enabled
+                                                ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
+                                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
+                                        }`}
+                                    >
+                                        {togglingBooking
+                                            ? 'Updating Status...'
+                                            : workspace.booking_enabled
+                                            ? 'Revoke / Disable Booking System'
+                                            : 'Enable Booking System'}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Audit Metadata Card */}
