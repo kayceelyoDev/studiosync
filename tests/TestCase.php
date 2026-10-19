@@ -10,7 +10,10 @@ abstract class TestCase extends BaseTestCase
 {
     public function createApplication()
     {
-        $app = require __DIR__.'/../bootstrap/app.php';
+        $bootstrapPath = (getcwd() && file_exists(getcwd().'/bootstrap/app.php'))
+            ? getcwd().'/bootstrap/app.php'
+            : __DIR__.'/../bootstrap/app.php';
+        $app = require $bootstrapPath;
 
         $this->traitsUsedByTest = class_uses_recursive(static::class);
 
