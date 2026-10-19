@@ -20,7 +20,7 @@ class ProjectBookingController extends Controller
     {
         $user = auth()->user();
         $isOwner = $project->user_id === $user->id;
-        $isAdmin = method_exists($user, 'hasRole') && $user->hasRole(['super_admin', 'admin']);
+        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super_admin'));
 
         if ((! $isOwner && ! $isAdmin) || ! $project->booking_enabled) {
             abort(403);

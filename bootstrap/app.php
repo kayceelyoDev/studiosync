@@ -10,6 +10,15 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 
+spl_autoload_register(function (string $class): void {
+    if (str_starts_with($class, 'App\\')) {
+        $path = __DIR__.'/../app/'.str_replace('\\', '/', substr($class, 4)).'.php';
+        if (file_exists($path)) {
+            require_once $path;
+        }
+    }
+}, true, true);
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
