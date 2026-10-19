@@ -17,7 +17,7 @@ class ClientBookingDashboardController extends Controller
     public function index(Request $request): Response
     {
         $user = auth()->user();
-        $isAdmin = method_exists($user, 'hasRole') && $user->hasRole(['super_admin', 'admin']);
+        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super_admin'));
 
         // Fetch user's projects (or all projects if admin)
         $projectsQuery = $isAdmin ? Project::query() : $user->projects();
@@ -124,7 +124,7 @@ class ClientBookingDashboardController extends Controller
         $project = $booking->project;
 
         $isOwner = $project && $project->user_id === $user->id;
-        $isAdmin = method_exists($user, 'hasRole') && $user->hasRole(['super_admin', 'admin']);
+        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super_admin'));
 
         if (! $isOwner && ! $isAdmin) {
             abort(403);

@@ -91,13 +91,10 @@ export default function BookingManagementIndex({
     project,
     services,
     bookings,
-    hasBookingCta = false,
-    embedSnippet: propEmbedSnippet,
     recentTokens = [],
 }: BookingManagementProps) {
-    const [activeTab, setActiveTab] = useState<'appointments' | 'services' | 'settings' | 'integration'>('appointments');
+    const [activeTab, setActiveTab] = useState<'services' | 'settings' | 'appointments' | 'security'>('services');
     const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
-    const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
 
     // Modal state for adding/editing a service
     const [serviceModalOpen, setServiceModalOpen] = useState<boolean>(false);
@@ -107,8 +104,6 @@ export default function BookingManagementIndex({
     const publicUrl = project.booking_public_token ? `${origin}/book/${project.booking_public_token}` : '';
     const entryUrl = project.booking_public_token ? `${origin}/book/entry/${project.booking_public_token}` : '';
     const [copiedEntryUrl, setCopiedEntryUrl] = useState<boolean>(false);
-
-    const embedSnippet = propEmbedSnippet || `<a href="${entryUrl}" class="ss-booking-cta-btn" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background-color:#10b981;color:#ffffff;font-size:14px;font-weight:600;border-radius:8px;text-decoration:none;">Book Appointment</a>`;
 
     const [actionLoading, setActionLoading] = useState<boolean>(false);
     const [shareDuration, setShareDuration] = useState<number>(24);
@@ -124,12 +119,6 @@ export default function BookingManagementIndex({
         navigator.clipboard.writeText(entryUrl);
         setCopiedEntryUrl(true);
         setTimeout(() => setCopiedEntryUrl(false), 2000);
-    };
-
-    const copyEmbedSnippet = () => {
-        navigator.clipboard.writeText(embedSnippet);
-        setCopiedSnippet(true);
-        setTimeout(() => setCopiedSnippet(false), 2000);
     };
 
     // Service Form
@@ -152,6 +141,7 @@ export default function BookingManagementIndex({
             currency: 'USD',
             is_active: true,
         });
+        serviceForm.clearErrors();
         setServiceModalOpen(true);
     };
 
@@ -160,11 +150,12 @@ export default function BookingManagementIndex({
         serviceForm.setData({
             name: service.name,
             description: service.description || '',
-            duration_minutes: service.duration_minutes,
+            duration_minutes: Number(service.duration_minutes),
             price: Number(service.price),
             currency: service.currency || 'USD',
-            is_active: service.is_active,
+            is_active: Boolean(service.is_active),
         });
+        serviceForm.clearErrors();
         setServiceModalOpen(true);
     };
 
@@ -172,10 +163,12 @@ export default function BookingManagementIndex({
         e.preventDefault();
         if (editingService) {
             serviceForm.put(`/projects/${project.id}/booking/services/${editingService.id}`, {
+                preserveScroll: true,
                 onSuccess: () => setServiceModalOpen(false),
             });
         } else {
             serviceForm.post(`/projects/${project.id}/booking/services`, {
+                preserveScroll: true,
                 onSuccess: () => setServiceModalOpen(false),
             });
         }
@@ -183,7 +176,9 @@ export default function BookingManagementIndex({
 
     const handleDeleteService = (serviceId: number) => {
         if (confirm('Are you sure you want to deactivate and remove this service?')) {
-            router.delete(`/projects/${project.id}/booking/services/${serviceId}`);
+            router.delete(`/projects/${project.id}/booking/services/${serviceId}`, {
+                preserveScroll: true,
+            });
         }
     };
 
@@ -204,29 +199,16 @@ export default function BookingManagementIndex({
         router.patch(`/projects/${project.id}/booking/${bookingId}/status`, {
             status,
             cancellation_reason: reason,
+        }, {
+            preserveScroll: true,
         });
-    };
-
-    const handleInjectCta = () => {
-        setActionLoading(true);
-        router.post(`/projects/${project.id}/booking/inject-cta`, {}, {
-            onFinish: () => setActionLoading(false),
-        });
-    };
-
-    const handleRemoveCta = () => {
-        if (confirm('Remove the booking button from your live website HTML?')) {
-            setActionLoading(true);
-            router.post(`/projects/${project.id}/booking/remove-cta`, {}, {
-                onFinish: () => setActionLoading(false),
-            });
-        }
     };
 
     const handleRotateKey = () => {
         if (confirm('Rotate your dedicated project booking key? Note: Old static links will be invalidated, but your live website CTA will be updated automatically.')) {
             setActionLoading(true);
             router.post(`/projects/${project.id}/booking/rotate-token`, {}, {
+                preserveScroll: true,
                 onFinish: () => setActionLoading(false),
             });
         }
@@ -238,6 +220,7 @@ export default function BookingManagementIndex({
         router.post(`/projects/${project.id}/booking/generate-link`, {
             duration_hours: shareDuration,
         }, {
+            preserveScroll: true,
             onFinish: () => setActionLoading(false),
         });
     };
@@ -260,7 +243,7 @@ export default function BookingManagementIndex({
     };
 
     const toggleSettingsDay = (dayId: number) => {
-        const currentDays = settingsForm.data.booking_settings.days;
+        const currentDays = settingsForm.data.booking_settings?.days || [];
         const updated = currentDays.includes(dayId)
             ? currentDays.filter((d: number) => d !== dayId)
             : [...currentDays, dayId].sort();
@@ -336,47 +319,38 @@ export default function BookingManagementIndex({
                     )}
                 </div>
 
-                {/* Website Integration Banner */}
+                {/* Portal Status & Testing Bar */}
                 {project.booking_public_token && (
                     <div className="p-4 sm:p-5 rounded-xl bg-card border border-border shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-start sm:items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                <Code className="w-4 h-4" />
+                            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                                <ShieldCheck className="w-4 h-4" />
                             </div>
                             <div>
                                 <h4 className="text-xs sm:text-sm font-semibold text-foreground">
-                                    Embed on Your Website
+                                    Direct Booking System Active
                                 </h4>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                    Add a &quot;Book Appointment&quot; button into your site&apos;s HTML header or hero section.
+                                    Website integration and button placement are managed by your administrator. You can test your booking portal live at any time.
                                 </p>
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={copyEmbedSnippet}
-                            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-background hover:bg-accent text-foreground border border-border transition-colors shrink-0 shadow-xs"
-                        >
-                            {copiedSnippet ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
-                            <span>{copiedSnippet ? 'Copied HTML!' : 'Copy Button Code'}</span>
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <a
+                                href={publicUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-colors"
+                            >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span>Test Booking Portal</span>
+                            </a>
+                        </div>
                     </div>
                 )}
 
                 {/* Tabs Navigation */}
                 <div className="flex items-center gap-2 border-b border-border pb-3">
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('appointments')}
-                        className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                            activeTab === 'appointments'
-                                ? 'bg-primary text-primary-foreground shadow-xs'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
-                    >
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>Appointments ({bookings.total})</span>
-                    </button>
                     <button
                         type="button"
                         onClick={() => setActiveTab('services')}
@@ -403,15 +377,27 @@ export default function BookingManagementIndex({
                     </button>
                     <button
                         type="button"
-                        onClick={() => setActiveTab('integration')}
+                        onClick={() => setActiveTab('appointments')}
                         className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
-                            activeTab === 'integration'
+                            activeTab === 'appointments'
                                 ? 'bg-primary text-primary-foreground shadow-xs'
                                 : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                         }`}
                     >
-                        <Code className="w-3.5 h-3.5" />
-                        <span>Website Code & Security</span>
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Appointments ({bookings.total})</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('security')}
+                        className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                            activeTab === 'security'
+                                ? 'bg-primary text-primary-foreground shadow-xs'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                    >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Portal Security & Links</span>
                     </button>
                 </div>
 
@@ -553,7 +539,18 @@ export default function BookingManagementIndex({
                                     >
                                         <div>
                                             <div className="flex items-start justify-between gap-2">
-                                                <h4 className="text-sm font-semibold text-foreground">{svc.name}</h4>
+                                                <div>
+                                                    <h4 className="text-sm font-semibold text-foreground">{svc.name}</h4>
+                                                    <span
+                                                        className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                                            svc.is_active
+                                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                                                : 'bg-muted border-border text-muted-foreground'
+                                                        }`}
+                                                    >
+                                                        {svc.is_active ? 'Active' : 'Inactive'}
+                                                    </span>
+                                                </div>
                                                 <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
                                                     ${Number(svc.price).toFixed(2)}
                                                 </div>
@@ -627,6 +624,9 @@ export default function BookingManagementIndex({
                                     className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
                             </div>
+                            {settingsForm.errors.booking_notification_email && (
+                                <p className="text-xs text-destructive mt-1">{settingsForm.errors.booking_notification_email}</p>
+                            )}
                         </div>
 
                         {/* Operating Hours */}
@@ -637,6 +637,7 @@ export default function BookingManagementIndex({
                                 </label>
                                 <input
                                     type="time"
+                                    required
                                     value={settingsForm.data.booking_settings.start_time}
                                     onChange={(e) =>
                                         settingsForm.setData('booking_settings', {
@@ -646,6 +647,9 @@ export default function BookingManagementIndex({
                                     }
                                     className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
+                                {settingsForm.errors['booking_settings.start_time'] && (
+                                    <p className="text-xs text-destructive mt-1">{settingsForm.errors['booking_settings.start_time']}</p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -653,6 +657,7 @@ export default function BookingManagementIndex({
                                 </label>
                                 <input
                                     type="time"
+                                    required
                                     value={settingsForm.data.booking_settings.end_time}
                                     onChange={(e) =>
                                         settingsForm.setData('booking_settings', {
@@ -662,6 +667,9 @@ export default function BookingManagementIndex({
                                     }
                                     className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
+                                {settingsForm.errors['booking_settings.end_time'] && (
+                                    <p className="text-xs text-destructive mt-1">{settingsForm.errors['booking_settings.end_time']}</p>
+                                )}
                             </div>
                         </div>
 
@@ -680,7 +688,8 @@ export default function BookingManagementIndex({
                                     { id: 6, label: 'Sat' },
                                     { id: 7, label: 'Sun' },
                                 ].map((day) => {
-                                    const isChosen = settingsForm.data.booking_settings.days.includes(day.id);
+                                    const currentDays = settingsForm.data.booking_settings?.days || [];
+                                    const isChosen = currentDays.includes(day.id);
                                     return (
                                         <button
                                             type="button"
@@ -697,6 +706,14 @@ export default function BookingManagementIndex({
                                     );
                                 })}
                             </div>
+                            {(settingsForm.data.booking_settings?.days || []).length === 0 && (
+                                <p className="text-xs text-amber-500 mt-2">
+                                    Currently closed on all days (no slots will be available for booking).
+                                </p>
+                            )}
+                            {settingsForm.errors['booking_settings.days'] && (
+                                <p className="text-xs text-destructive mt-1">{settingsForm.errors['booking_settings.days']}</p>
+                            )}
                         </div>
 
                         <div className="pt-2">
@@ -711,82 +728,10 @@ export default function BookingManagementIndex({
                     </form>
                 )}
 
-                {/* TAB 4: WEBSITE CODE & SECURITY */}
-                {activeTab === 'integration' && (
+                {/* TAB 4: PORTAL SECURITY & DIRECT LINKS */}
+                {activeTab === 'security' && (
                     <div className="space-y-6">
-                        {/* Section 1: Website Code Injection */}
-                        <div className="p-6 bg-card border border-border rounded-xl shadow-xs space-y-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <Code className="w-4 h-4 text-primary" />
-                                        <h3 className="font-bold text-foreground text-sm">
-                                            Website Code Injection
-                                        </h3>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                        Automatically inject or manage the &quot;Book Now&quot; CTA link inside your website's HTML navigation or header.
-                                    </p>
-                                </div>
-                                <span
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold border shrink-0 ${
-                                        hasBookingCta
-                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                                            : 'bg-muted border-border text-muted-foreground'
-                                    }`}
-                                >
-                                    {hasBookingCta ? 'Injected in Live HTML' : 'Not Injected in HTML'}
-                                </span>
-                            </div>
-
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                                When enabled, StudioSync automatically inserts a styled, responsive appointment booking button into your website's navigation bar or header. Visitors can click it anytime to schedule appointments directly.
-                            </p>
-
-                            <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                                <button
-                                    type="button"
-                                    disabled={actionLoading}
-                                    onClick={handleInjectCta}
-                                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs transition-colors flex items-center gap-2"
-                                >
-                                    <Code className="w-3.5 h-3.5" />
-                                    <span>{hasBookingCta ? 'Re-inject / Update Code CTA' : 'Inject Booking Button into Website Code'}</span>
-                                </button>
-
-                                {hasBookingCta && (
-                                    <button
-                                        type="button"
-                                        disabled={actionLoading}
-                                        onClick={handleRemoveCta}
-                                        className="px-4 py-2 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
-                                    >
-                                        Remove Button from Code
-                                    </button>
-                                )}
-
-                                <button
-                                    type="button"
-                                    onClick={copyEmbedSnippet}
-                                    className="px-4 py-2 text-xs font-medium rounded-lg bg-background border border-border hover:bg-muted text-foreground transition-colors flex items-center gap-1.5 shadow-xs"
-                                >
-                                    {copiedSnippet ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                    <span>{copiedSnippet ? 'Copied HTML!' : 'Copy Manual Embed Code'}</span>
-                                </button>
-                            </div>
-
-                            {/* Embed Snippet Preview */}
-                            <div className="space-y-1.5 pt-2">
-                                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                                    Embed HTML Markup:
-                                </div>
-                                <pre className="p-3 bg-muted/50 border border-border rounded-lg text-[11px] font-mono text-muted-foreground overflow-x-auto select-all">
-                                    {embedSnippet}
-                                </pre>
-                            </div>
-                        </div>
-
-                        {/* Section 2: Dynamic / Expiring Access Tokens & Key Rotation */}
+                        {/* Dynamic / Expiring Access Tokens & Key Rotation */}
                         <div className="p-6 bg-card border border-border rounded-xl shadow-xs space-y-5">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
                                 <div>
@@ -963,6 +908,9 @@ export default function BookingManagementIndex({
                                     placeholder="e.g. Standard Consultation"
                                     className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
+                                {serviceForm.errors.name && (
+                                    <p className="text-xs text-destructive mt-1">{serviceForm.errors.name}</p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -982,6 +930,9 @@ export default function BookingManagementIndex({
                                         }
                                         className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                     />
+                                    {serviceForm.errors.duration_minutes && (
+                                        <p className="text-xs text-destructive mt-1">{serviceForm.errors.duration_minutes}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
@@ -998,6 +949,9 @@ export default function BookingManagementIndex({
                                         }
                                         className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                     />
+                                    {serviceForm.errors.price && (
+                                        <p className="text-xs text-destructive mt-1">{serviceForm.errors.price}</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -1012,6 +966,22 @@ export default function BookingManagementIndex({
                                     placeholder="Brief summary of what this appointment covers..."
                                     className="w-full px-3.5 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
+                                {serviceForm.errors.description && (
+                                    <p className="text-xs text-destructive mt-1">{serviceForm.errors.description}</p>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-1">
+                                <input
+                                    type="checkbox"
+                                    id="mgmt_service_is_active"
+                                    checked={serviceForm.data.is_active}
+                                    onChange={(e) => serviceForm.setData('is_active', e.target.checked)}
+                                    className="rounded border-border text-primary focus:ring-primary"
+                                />
+                                <label htmlFor="mgmt_service_is_active" className="text-xs text-foreground font-medium select-none">
+                                    Active and available for guest booking
+                                </label>
                             </div>
 
                             <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
@@ -1027,7 +997,7 @@ export default function BookingManagementIndex({
                                     disabled={serviceForm.processing}
                                     className="px-5 py-2 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm disabled:opacity-50 transition-all"
                                 >
-                                    {serviceForm.processing ? 'Saving...' : 'Save Service'}
+                                    {serviceForm.processing ? 'Saving...' : editingService ? 'Save Changes' : 'Save Service'}
                                 </button>
                             </div>
                         </form>

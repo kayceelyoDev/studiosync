@@ -53,7 +53,8 @@ class GenerateAiPromtPage extends Controller
             'projectAssets',
             'deployments' => fn ($query) => $query->latest()->limit(10),
             'contactEmailer' => fn ($query) => $query->withCount('messages'),
-            'bookingServices',
+            'bookingServices' => fn ($query) => $query->orderBy('is_active', 'desc')->orderBy('name'),
+            'bookings' => fn ($query) => $query->with('bookingService')->orderByDesc('booking_date')->orderByDesc('booking_time')->limit(10),
             'clientRequests' => fn ($query) => $query->latest(),
         ]);
 

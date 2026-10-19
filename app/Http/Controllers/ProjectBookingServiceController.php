@@ -9,14 +9,23 @@ use Illuminate\Http\Request;
 
 class ProjectBookingServiceController extends Controller
 {
+    protected function authorizeAccess(Project $project): void
+    {
+        $user = auth()->user();
+        $isOwner = $project->user_id === $user->id;
+        $isAdmin = method_exists($user, 'hasRole') && ($user->hasRole('admin') || $user->hasRole('super_admin'));
+
+        if ((! $isOwner && ! $isAdmin) || ! $project->booking_enabled) {
+            abort(403);
+        }
+    }
+
     /**
      * Store a newly created service for a project.
      */
     public function store(Request $request, Project $project): RedirectResponse
     {
-        if ($project->user_id !== auth()->id() || ! $project->booking_enabled) {
-            abort(403);
-        }
+        $this->authorizeAccess($project);
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -44,7 +53,9 @@ class ProjectBookingServiceController extends Controller
      */
     public function update(Request $request, Project $project, BookingService $service): RedirectResponse
     {
-        if ($project->user_id !== auth()->id() || ! $project->booking_enabled || $service->project_id !== $project->id) {
+        $this->authorizeAccess($project);
+
+        if ($service->project_id !== $project->id) {
             abort(403);
         }
 
@@ -74,7 +85,9 @@ class ProjectBookingServiceController extends Controller
      */
     public function destroy(Project $project, BookingService $service): RedirectResponse
     {
-        if ($project->user_id !== auth()->id() || ! $project->booking_enabled || $service->project_id !== $project->id) {
+        $this->authorizeAccess($project);
+
+        if ($service->project_id !== $project->id) {
             abort(403);
         }
 
