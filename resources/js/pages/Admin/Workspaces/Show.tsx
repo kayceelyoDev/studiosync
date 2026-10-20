@@ -112,6 +112,7 @@ export default function AdminWorkspacesShow({
     const [actionLoading, setActionLoading] = useState<boolean>(false);
     const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
     const [copiedEntry, setCopiedEntry] = useState<boolean>(false);
+    const [showCodePreview, setShowCodePreview] = useState<boolean>(true);
 
     const pendingBookingReq = useMemo(() => {
         const reqs = workspace.client_requests || workspace.clientRequests || [];
@@ -401,6 +402,31 @@ export default function AdminWorkspacesShow({
                                 </div>
                             </div>
                         </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                                href={`/projects/${workspace.id}/edit`}
+                                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs transition-colors flex items-center gap-1.5"
+                                title="Open full visual and code website editor"
+                            >
+                                <Code className="w-4 h-4" />
+                                <span>Open Website Editor</span>
+                            </Link>
+
+                            {(workspace.deployment_status === 'deployed' || workspace.status === 'deployed' || workspace.vercel_project_name) && (
+                                <a
+                                    href={`/admin/projects/${workspace.id}/vercel-redirect`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-zinc-900 text-zinc-100 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 shadow-xs transition-colors flex items-center gap-1.5"
+                                    title="Manage project deployment and CDN settings on Vercel"
+                                >
+                                    <Rocket className="w-3.5 h-3.5" />
+                                    <span>Manage on Vercel</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                </a>
+                            )}
+                        </div>
                     </div>
 
                     {/* Split View: 2 Columns */}
@@ -545,6 +571,27 @@ export default function AdminWorkspacesShow({
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-2">
+                                            <Link
+                                                href={`/projects/${workspace.id}/edit`}
+                                                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-card border border-border text-foreground hover:bg-muted shadow-xs transition-colors flex items-center gap-1.5"
+                                                title="Open in visual and split website editor"
+                                            >
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                                <span>Open in Website Editor</span>
+                                            </Link>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCodePreview((prev) => !prev)}
+                                                className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                                                    showCodePreview
+                                                        ? 'bg-primary/10 text-primary border border-primary/20'
+                                                        : 'bg-muted text-muted-foreground hover:text-foreground'
+                                                }`}
+                                                title="Toggle real-time live preview panel"
+                                            >
+                                                <Laptop className="w-3.5 h-3.5" />
+                                                <span>{showCodePreview ? 'Hide Split Preview' : 'Show Split Preview'}</span>
+                                            </button>
                                             <button
                                                 type="button"
                                                 onClick={handleInsertCtaIntoEditor}
@@ -579,16 +626,49 @@ export default function AdminWorkspacesShow({
                                         </div>
                                     </div>
 
-                                    <div className="relative">
-                                        <textarea
-                                            value={data.html_content}
-                                            onChange={(e) => setData('html_content', e.target.value)}
-                                            rows={24}
-                                            className="w-full font-mono text-xs p-4 bg-zinc-950 text-zinc-100 dark:bg-zinc-950 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 leading-relaxed resize-y select-text"
-                                            placeholder="<!DOCTYPE html><html>...</html>"
-                                            spellCheck={false}
-                                        />
-                                    </div>
+                                    {showCodePreview ? (
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                            <div className="flex flex-col">
+                                                <div className="text-[11px] font-mono text-muted-foreground mb-1.5 flex items-center justify-between">
+                                                    <span>HTML Source Code</span>
+                                                    <span>Updates preview live</span>
+                                                </div>
+                                                <textarea
+                                                    value={data.html_content}
+                                                    onChange={(e) => setData('html_content', e.target.value)}
+                                                    rows={24}
+                                                    className="w-full h-[580px] font-mono text-xs p-4 bg-zinc-950 text-zinc-100 dark:bg-zinc-950 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 leading-relaxed resize-none select-text"
+                                                    placeholder="<!DOCTYPE html><html>...</html>"
+                                                    spellCheck={false}
+                                                />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <div className="text-[11px] font-mono text-muted-foreground mb-1.5 flex items-center justify-between">
+                                                    <span>Real-time Live Preview</span>
+                                                    <span className="text-emerald-500 font-semibold">&bull; Active</span>
+                                                </div>
+                                                <div className="w-full h-[580px] rounded-xl border border-border shadow-inner overflow-hidden bg-white">
+                                                    <iframe
+                                                        srcDoc={data.html_content}
+                                                        title="Admin Code Live Preview"
+                                                        className="w-full h-full border-0 bg-white"
+                                                        sandbox="allow-scripts allow-same-origin allow-forms"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <textarea
+                                                value={data.html_content}
+                                                onChange={(e) => setData('html_content', e.target.value)}
+                                                rows={24}
+                                                className="w-full font-mono text-xs p-4 bg-zinc-950 text-zinc-100 dark:bg-zinc-950 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 leading-relaxed resize-y select-text"
+                                                placeholder="<!DOCTYPE html><html>...</html>"
+                                                spellCheck={false}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

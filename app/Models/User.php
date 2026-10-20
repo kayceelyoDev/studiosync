@@ -59,4 +59,9 @@ class User extends Authenticatable implements PasskeyUser
     {
         return $this->hasMany(Project::class);
     }
+
+    public function clientRequests(): HasMany
+    {
+        return $this->hasMany(ClientRequest::class);
+    }
 }

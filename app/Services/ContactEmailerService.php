@@ -373,4 +373,99 @@ SCRIPT;
         $html = preg_replace('/<!-- SS-EMAILER-START -->.*?<!-- SS-EMAILER-END -->/s', '', $html) ?? $html;
         $project->update(['html_content' => $html]);
     }
+
+    public const SECTION_START_TAG = '<!-- SS-CONTACT-FORM-START -->';
+
+    public const SECTION_END_TAG = '<!-- SS-CONTACT-FORM-END -->';
+
+    /**
+     * Check if the project's HTML contains a contact form or contact section.
+     */
+    public function hasContactForm(Project $project): bool
+    {
+        $html = strtolower($project->html_content ?? '');
+
+        return str_contains($html, 'id="contact"')
+            || str_contains($html, 'id="contact-form"')
+            || str_contains($html, 'data-contact')
+            || str_contains($html, 'class="contact-form"')
+            || str_contains($html, '<form');
+    }
+
+    /**
+     * Inject a clean, responsive Contact Us section into the project's HTML content.
+     */
+    public function injectContactSection(Project $project): bool
+    {
+        $html = $project->html_content ?? '';
+        if (empty($html)) {
+            return false;
+        }
+
+        // Clean out any existing injected contact form section
+        $cleanHtml = preg_replace('/<!-- SS-CONTACT-FORM-START -->.*?<!-- SS-CONTACT-FORM-END -->/s', '', $html) ?? $html;
+
+        $snippet = <<<'HTML'
+<!-- SS-CONTACT-FORM-START -->
+<section id="contact" style="padding: 60px 20px; max-width: 600px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <div style="text-align: center; margin-bottom: 32px;">
+    <h2 style="font-size: 28px; font-weight: 700; color: #18181b; margin-bottom: 8px;">Contact Us</h2>
+    <p style="font-size: 14px; color: #71717a;">Send us a message and we will respond as soon as possible.</p>
+  </div>
+  <form id="contact-form" data-contact style="display: flex; flex-direction: column; gap: 16px; background: #ffffff; padding: 28px; border-radius: 16px; border: 1px solid #e4e4e7; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label for="contact-name" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #3f3f46; letter-spacing: 0.5px;">Your Name</label>
+      <input type="text" id="contact-name" name="name" required placeholder="John Doe" style="padding: 10px 14px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; color: #18181b;" />
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label for="contact-email" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #3f3f46; letter-spacing: 0.5px;">Email Address</label>
+      <input type="email" id="contact-email" name="email" required placeholder="john@example.com" style="padding: 10px 14px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; color: #18181b;" />
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label for="contact-subject" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #3f3f46; letter-spacing: 0.5px;">Subject</label>
+      <input type="text" id="contact-subject" name="subject" placeholder="General Inquiry" style="padding: 10px 14px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; color: #18181b;" />
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <label for="contact-message" style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: #3f3f46; letter-spacing: 0.5px;">Message</label>
+      <textarea id="contact-message" name="message" required rows="4" placeholder="Write your message here..." style="padding: 10px 14px; border: 1px solid #d4d4d8; border-radius: 8px; font-size: 14px; outline: none; resize: vertical; background: #ffffff; color: #18181b;"></textarea>
+    </div>
+    <button type="submit" style="padding: 12px 20px; background-color: #4f46e5; color: #ffffff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s ease;">
+      Send Message
+    </button>
+  </form>
+</section>
+<!-- SS-CONTACT-FORM-END -->
+HTML;
+
+        // Best injection point: before <footer>, before SS-EMAILER-START, or before </body>
+        if (stripos($cleanHtml, '<footer') !== false) {
+            $injectedHtml = preg_replace('/<footer/i', $snippet."\n<footer", $cleanHtml, 1);
+        } elseif (stripos($cleanHtml, '<!-- SS-EMAILER-START -->') !== false) {
+            $injectedHtml = str_replace('<!-- SS-EMAILER-START -->', $snippet."\n<!-- SS-EMAILER-START -->", $cleanHtml);
+        } elseif (stripos($cleanHtml, '</body>') !== false) {
+            $injectedHtml = preg_replace('/<\/body>/i', $snippet."\n</body>", $cleanHtml, 1);
+        } else {
+            $injectedHtml = $cleanHtml."\n".$snippet;
+        }
+
+        $project->update(['html_content' => $injectedHtml]);
+
+        return true;
+    }
+
+    /**
+     * Remove any injected contact form section.
+     */
+    public function removeContactSection(Project $project): bool
+    {
+        $html = $project->html_content ?? '';
+        if (empty($html)) {
+            return false;
+        }
+
+        $cleanHtml = preg_replace('/<!-- SS-CONTACT-FORM-START -->.*?<!-- SS-CONTACT-FORM-END -->/s', '', $html) ?? $html;
+        $project->update(['html_content' => $cleanHtml]);
+
+        return true;
+    }
 }

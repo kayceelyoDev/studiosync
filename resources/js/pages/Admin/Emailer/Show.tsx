@@ -70,9 +70,17 @@ interface Props {
     emailer: EmailerInfo | null;
     mail_driver?: string;
     recent_messages?: RecentMessage[];
+    client_request?: {
+        id: number;
+        title: string;
+        category?: string;
+        category_label?: string;
+        status?: string;
+    } | null;
+    has_contact_form?: boolean;
 }
 
-export default function AdminEmailerShow({ project, emailer, mail_driver = 'log', recent_messages = [] }: Props) {
+export default function AdminEmailerShow({ project, emailer, mail_driver = 'log', recent_messages = [], client_request, has_contact_form = false }: Props) {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [deviceMode, setDeviceMode] = useState<'desktop' | 'mobile'>('desktop');
     const [iframeKey, setIframeKey] = useState<number>(0);
@@ -228,6 +236,20 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
         }
     };
 
+    const handleInjectContactSection = () => {
+        router.post(`/admin/projects/${project.id}/emailer/inject-section`, {}, {
+            preserveScroll: true,
+            onSuccess: () => setIframeKey(k => k + 1),
+        });
+    };
+
+    const handleRemoveContactSection = () => {
+        router.post(`/admin/projects/${project.id}/emailer/remove-section`, {}, {
+            preserveScroll: true,
+            onSuccess: () => setIframeKey(k => k + 1),
+        });
+    };
+
     // Inspect project HTML for contact form
     const hasForm = project.html_content ? /<form[\s>]/i.test(project.html_content) : false;
     const hasEmailField = project.html_content ? /(type="email"|name="email"|id="[^"]*email[^"]*")/i.test(project.html_content) : false;
@@ -238,6 +260,50 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
 
             <div className="flex flex-col flex-1 h-full min-h-screen bg-background text-foreground">
                 <div className="w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 mx-auto flex flex-col gap-6">
+
+                    {/* Service Request Fulfillment Banner */}
+                    {client_request && (
+                        <div className="p-4 rounded-xl bg-primary/10 border border-primary/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shadow-xs">
+                                    #{client_request.id}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary block">
+                                        Fulfilling Client Request &bull; {client_request.category_label || 'Contact Emailer'}
+                                    </span>
+                                    <h4 className="text-sm font-bold text-foreground">
+                                        {client_request.title}
+                                    </h4>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Link
+                                    href={`/admin/requests/${client_request.id}`}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-colors shadow-xs"
+                                >
+                                    &larr; Back to Request #{client_request.id}
+                                </Link>
+                                {client_request.status !== 'completed' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            router.put(`/admin/requests/${client_request.id}`, {
+                                                status: 'completed',
+                                                admin_notes: 'Contact emailer configured, script injected, and verified successfully.',
+                                            }, {
+                                                onSuccess: () => router.visit(`/admin/requests/${client_request.id}`)
+                                            });
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                                    >
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        <span>Mark Request Completed</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Top Header */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
@@ -489,18 +555,39 @@ export default function AdminEmailerShow({ project, emailer, mail_driver = 'log'
 
                             {/* HTML Inspection & Verification Card */}
                             <div className="p-4 rounded-xl border border-border bg-card shadow-xs text-xs space-y-2.5">
-                                <div className="flex items-center justify-between pb-2 border-b border-border">
+                                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-border">
                                     <span className="font-semibold text-foreground flex items-center gap-1.5">
                                         <Sparkles className="w-4 h-4 text-primary" />
-                                        Form Detection & HTML Audit
+                                        Form Detection &amp; HTML Audit
                                     </span>
-                                    <Link
-                                        href={`/admin/projects/${project.id}`}
-                                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium"
-                                    >
-                                        <span>Edit Project HTML</span>
-                                        <ExternalLink className="w-3 h-3" />
-                                    </Link>
+                                    <div className="flex items-center gap-2">
+                                        {!hasForm ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleInjectContactSection}
+                                                className="px-2.5 py-1 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-xs flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <span>+ Auto-Inject Contact Section</span>
+                                            </button>
+                                        ) : (
+                                            project.html_content?.includes('<!-- SS-CONTACT-FORM-START -->') && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRemoveContactSection}
+                                                    className="text-xs text-muted-foreground hover:text-foreground underline cursor-pointer"
+                                                >
+                                                    Remove Injected Section
+                                                </button>
+                                            )
+                                        )}
+                                        <Link
+                                            href={`/projects/${project.id}/edit${client_request ? `?request_id=${client_request.id}` : ''}`}
+                                            className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-semibold"
+                                        >
+                                            <span>Open Website Editor</span>
+                                            <ExternalLink className="w-3 h-3" />
+                                        </Link>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-muted-foreground">

@@ -74,13 +74,16 @@ class AdminWorkspaceController extends Controller
             'auto_inject_cta' => ['nullable', 'boolean'],
         ]);
 
-        $pendingRequest = $project->clientRequests()
-            ->where('category', 'booking_system')
-            ->where('status', 'pending')
-            ->latest()
-            ->first();
+        $requestId = $request->input('client_request_id');
+        $targetRequest = $requestId
+            ? $project->clientRequests()->find($requestId)
+            : $project->clientRequests()
+                ->where('category', 'booking_system')
+                ->whereIn('status', ['pending', 'reviewing', 'in_progress'])
+                ->latest()
+                ->first();
 
-        $intakeData = $pendingRequest ? $pendingRequest->intake_data : [];
+        $intakeData = $targetRequest ? $targetRequest->intake_data : [];
 
         $servicesData = $request->has('services')
             ? $request->input('services')
@@ -108,7 +111,7 @@ class AdminWorkspaceController extends Controller
             ];
         }
 
-        DB::transaction(function () use ($project, $servicesData, $notificationEmail, $bookingSettings, $pendingRequest, $request) {
+        DB::transaction(function () use ($project, $servicesData, $notificationEmail, $bookingSettings, $targetRequest, $request) {
             $this->syncServices($project, $servicesData);
 
             $token = $project->booking_public_token ?: Project::generateBookingToken();
@@ -125,8 +128,8 @@ class AdminWorkspaceController extends Controller
                 app(BookingCodeInjectionService::class)->injectBookingCta($project);
             }
 
-            if ($pendingRequest) {
-                $pendingRequest->update([
+            if ($targetRequest) {
+                $targetRequest->update([
                     'status' => 'completed',
                     'admin_id' => auth()->id(),
                     'completed_at' => now(),
@@ -268,5 +271,16 @@ class AdminWorkspaceController extends Controller
         }
 
         return redirect()->back()->with('success', 'Booking portal key rotated successfully.');
+    }
+
+    public function vercelRedirect(Project $project)
+    {
+        $url = $project->vercel_dashboard_url;
+
+        if (! $url) {
+            return redirect()->back()->with('error', 'Project does not have an associated Vercel deployment.');
+        }
+
+        return redirect()->away($url);
     }
 }

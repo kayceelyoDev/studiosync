@@ -3,6 +3,8 @@
 use App\Http\Controllers\Admin\ClientRequestCommentController as AdminClientRequestCommentController;
 use App\Http\Controllers\Admin\ClientRequestController as AdminClientRequestController;
 use App\Http\Controllers\Admin\ContactEmailerController as AdminContactEmailerController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\UserController as AdminUserController;
 use App\Http\Controllers\AdminWorkspaceController;
 use App\Http\Controllers\BookingRequestController;
 use App\Http\Controllers\ClientBookingDashboardController;
@@ -121,12 +123,19 @@ Route::post('/api/contact/{token}', [ContactFormController::class, 'store'])
 | Accessible by: super_admin, admin
 */
 Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', fn () => redirect()->route('admin.dashboard'));
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
+
+    // Admin Users Directory & Explorer
+    Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
+    Route::get('/users/{user}', [AdminUserController::class, 'show'])->name('users.show');
+
+    // Admin Projects & Workspaces
     Route::get('/workspaces', fn () => redirect()->route('admin.projects.index'));
     Route::get('/projects', [AdminWorkspaceController::class, 'index'])->name('projects.index');
     Route::get('/projects/{project}', [AdminWorkspaceController::class, 'show'])->name('projects.show');
     Route::put('/projects/{project}', [AdminWorkspaceController::class, 'update'])->name('projects.update');
-    // Compatibility redirects
-    Route::get('/workspaces', fn () => redirect()->route('admin.projects.index'));
+    Route::get('/projects/{project}/vercel-redirect', [AdminWorkspaceController::class, 'vercelRedirect'])->name('projects.vercel-redirect');
     Route::get('/workspaces/{project}', fn (Project $project) => redirect()->route('admin.projects.show', $project));
 
     // Admin Project Contact Emailer
@@ -137,6 +146,8 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->prefix('admin
         Route::patch('/toggle', [AdminContactEmailerController::class, 'toggle'])->name('toggle');
         Route::post('/deploy', [AdminContactEmailerController::class, 'deploy'])->name('deploy');
         Route::post('/test', [AdminContactEmailerController::class, 'testMessage'])->name('test');
+        Route::post('/inject-section', [AdminContactEmailerController::class, 'injectContactSection'])->name('inject-section');
+        Route::post('/remove-section', [AdminContactEmailerController::class, 'removeContactSection'])->name('remove-section');
     });
 
     // Admin Client Requests

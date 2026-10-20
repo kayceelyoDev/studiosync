@@ -18,6 +18,10 @@ class Project extends Model
 
     protected $hidden = ['generated_prompt'];
 
+    protected $appends = [
+        'vercel_dashboard_url',
+    ];
+
     protected $fillable = [
         'workspace_id',
         'user_id',
@@ -140,5 +144,27 @@ class Project extends Model
             'html_content' => $htmlContent,
             'project_name' => $projectName ?? $this->project_name,
         ]);
+    }
+
+    /**
+     * Resolve the Vercel project management dashboard URL.
+     */
+    public function getVercelDashboardUrlAttribute(): ?string
+    {
+        if (empty($this->vercel_project_name)) {
+            return null;
+        }
+
+        $teamSlug = config('services.vercel.team_slug');
+        if (! empty($teamSlug)) {
+            return "https://vercel.com/{$teamSlug}/{$this->vercel_project_name}";
+        }
+
+        $teamId = config('services.vercel.team_id');
+        if (! empty($teamId)) {
+            return "https://vercel.com/{$teamId}/{$this->vercel_project_name}";
+        }
+
+        return "https://vercel.com/~/{$this->vercel_project_name}";
     }
 }

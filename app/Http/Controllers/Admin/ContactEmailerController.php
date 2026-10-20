@@ -37,6 +37,9 @@ class ContactEmailerController extends Controller
             $project->refresh();
         }
 
+        $requestId = request()->integer('request_id');
+        $clientRequest = $requestId ? ClientRequest::find($requestId) : null;
+
         $recentMessages = $emailer ? $emailer->messages()
             ->latest('id')
             ->take(10)
@@ -79,6 +82,14 @@ class ContactEmailerController extends Controller
                 'messages_count' => $emailer->messages()->count(),
                 'created_at' => $emailer->created_at?->toIso8601String(),
             ] : null,
+            'client_request' => $clientRequest ? [
+                'id' => $clientRequest->id,
+                'title' => $clientRequest->title,
+                'category' => $clientRequest->category->value,
+                'category_label' => $clientRequest->category->label(),
+                'status' => $clientRequest->status->value,
+            ] : null,
+            'has_contact_form' => $this->service->hasContactForm($project),
             'mail_driver' => config('mail.default'),
             'recent_messages' => $recentMessages,
         ]);
@@ -97,10 +108,20 @@ class ContactEmailerController extends Controller
             ? ClientRequest::find($request->integer('client_request_id'))
             : null;
 
-        $this->service->create($project, $clientRequest, $request->validated());
+        $this->service->create($project, $clientRequest, $request->only(['recipient_email', 'reply_name']));
+
+        if ($request->boolean('auto_inject_section') && ! $this->service->hasContactForm($project)) {
+            $this->service->injectContactSection($project);
+        }
+
+        if ($request->input('redirect_to') === 'request' && $clientRequest) {
+            return redirect()
+                ->route('admin.requests.show', $clientRequest->id)
+                ->with('success', 'Emailer configured and Contact Us form connected! Deploy the project to make it live.');
+        }
 
         return redirect()
-            ->route('admin.projects.emailer.show', $project)
+            ->route('admin.projects.emailer.show', ['project' => $project, 'request_id' => $clientRequest?->id])
             ->with('success', 'Emailer configured successfully. Deploy the project to make the contact form live.');
     }
 
@@ -215,5 +236,25 @@ class ContactEmailerController extends Controller
             'messages_count' => $emailer->messages()->count(),
             'mail_driver' => $mailDriver,
         ]);
+    }
+
+    /**
+     * Inject Contact Us section markup into the project's html_content.
+     */
+    public function injectContactSection(Project $project): RedirectResponse
+    {
+        $this->service->injectContactSection($project);
+
+        return back()->with('success', 'Contact Us section markup successfully injected into project HTML.');
+    }
+
+    /**
+     * Remove the injected Contact Us section markup from the project's html_content.
+     */
+    public function removeContactSection(Project $project): RedirectResponse
+    {
+        $this->service->removeContactSection($project);
+
+        return back()->with('success', 'Contact Us section markup removed from project HTML.');
     }
 }

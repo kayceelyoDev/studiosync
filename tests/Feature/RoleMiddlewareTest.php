@@ -58,20 +58,20 @@ it('blocks client from admin routes', function () {
 
 // ─── CheckRoleMiddleware unit tests ───────────────────────────────────────────
 
-it('redirects a super_admin to the admin workspaces index from the dashboard', function () {
+it('redirects a super_admin to the admin dashboard from the dashboard', function () {
     $user = makeUser('super_admin');
 
     $this->actingAs($user)
         ->get('/dashboard')
-        ->assertRedirect(route('admin.projects.index'));
+        ->assertRedirect(route('admin.dashboard'));
 });
 
-it('redirects an admin to the admin workspaces index from the dashboard', function () {
+it('redirects an admin to the admin dashboard from the dashboard', function () {
     $user = makeUser('admin');
 
     $this->actingAs($user)
         ->get('/dashboard')
-        ->assertRedirect(route('admin.projects.index'));
+        ->assertRedirect(route('admin.dashboard'));
 });
 
 it('allows a client to access the dashboard', function () {

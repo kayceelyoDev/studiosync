@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PreferenceFormRequest;
 use App\Jobs\GenerateWebsiteJob;
 use App\Models\AssetFolder;
+use App\Models\ClientRequest;
 use App\Models\Project;
 use App\Models\ProjectAsset;
 use Illuminate\Http\JsonResponse;
@@ -29,7 +30,7 @@ class GenerateAiPromtPage extends Controller
         }
 
         if (auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin')) {
-            return redirect()->route('admin.projects.index');
+            return redirect()->route('admin.dashboard');
         }
 
         $data = Project::select('id', 'workspace_id', 'project_name', 'status', 'project_url', 'deployment_status', 'vercel_project_name', 'created_at')
@@ -139,13 +140,20 @@ class GenerateAiPromtPage extends Controller
 
     public function edit(Project $project)
     {
-        if ($project->user_id !== auth()->id()) {
+        $user = auth()->user();
+        $isAdmin = $user && ($user->hasRole('admin') || $user->hasRole('super_admin'));
+        if ($project->user_id !== auth()->id() && ! $isAdmin) {
             abort(403);
         }
 
+        $requestId = request()->integer('request_id');
+        $clientRequest = $requestId ? ClientRequest::find($requestId) : null;
+
         $project->load([
+            'user:id,name,email',
             'workspace:id,name',
             'projectAssets' => fn ($query) => $query->latest(),
+            'contactEmailer',
         ]);
 
         $initialAssets = $project->projectAssets->map(function ($asset) {
@@ -167,16 +175,26 @@ class GenerateAiPromtPage extends Controller
         return Inertia::render('Project/Edit', [
             'project' => $project,
             'initialAssets' => $initialAssets,
+            'clientRequest' => $clientRequest ? [
+                'id' => $clientRequest->id,
+                'category' => $clientRequest->category->value,
+                'category_label' => $clientRequest->category->label(),
+                'title' => $clientRequest->title,
+                'description' => $clientRequest->description,
+                'status' => $clientRequest->status->value,
+            ] : null,
         ]);
     }
 
     public function update(Request $request, Project $project): JsonResponse|RedirectResponse
     {
-        if ($project->user_id !== auth()->id()) {
+        $user = auth()->user();
+        $isAdmin = $user && ($user->hasRole('admin') || $user->hasRole('super_admin'));
+        if ($project->user_id !== auth()->id() && ! $isAdmin) {
             abort(403);
         }
 
-        if ($project->isDeployed()) {
+        if ($project->isDeployed() && ! $isAdmin) {
             if ($request->expectsJson() || $request->wantsJson()) {
                 return response()->json([
                     'success' => false,

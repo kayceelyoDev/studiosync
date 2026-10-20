@@ -20,6 +20,8 @@ class StoreContactEmailerRequest extends FormRequest
             'recipient_email' => ['required', 'email', 'max:255'],
             'reply_name' => ['required', 'string', 'max:255'],
             'client_request_id' => ['nullable', 'integer', 'exists:client_requests,id'],
+            'auto_inject_section' => ['nullable', 'boolean'],
+            'redirect_to' => ['nullable', 'string', 'in:request,emailer'],
         ];
     }
 }

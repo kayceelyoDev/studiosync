@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, LayoutGrid, ClipboardList, Calendar } from 'lucide-react';
+import { BookOpen, LayoutGrid, ClipboardList, Calendar, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -38,6 +38,21 @@ const mainNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
     {
+        title: 'Dashboard',
+        href: '/admin/dashboard',
+        icon: LayoutGrid,
+    },
+    {
+        title: 'Users & Clients',
+        href: '/admin/users',
+        icon: Users,
+    },
+    {
+        title: 'Service Requests',
+        href: adminRequestsIndex(),
+        icon: ClipboardList,
+    },
+    {
         title: 'Client Projects',
         href: '/admin/projects',
         icon: BookOpen,
@@ -46,11 +61,6 @@ const adminNavItems: NavItem[] = [
         title: 'Bookings Hub',
         href: '/bookings',
         icon: Calendar,
-    },
-    {
-        title: 'Service Requests',
-        href: adminRequestsIndex(),
-        icon: ClipboardList,
     },
 ];
 
@@ -64,7 +74,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboard()} prefetch>
+                            <Link href={isAdmin ? '/admin/dashboard' : dashboard()} prefetch>
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

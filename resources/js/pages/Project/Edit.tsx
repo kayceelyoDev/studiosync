@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
 import {
     ChevronLeft,
@@ -68,6 +68,7 @@ import {
     ZoomIn
 } from 'lucide-react';
 import { IconPickerModal } from '@/components/IconPickerModal';
+import { HtmlCodeIde } from '@/components/Editor/HtmlCodeIde';
 
 export interface ProjectAsset {
     id: number;
@@ -97,6 +98,12 @@ interface Project {
         id: number;
         name: string;
     };
+    user?: {
+        id: number;
+        name: string;
+        email: string;
+    };
+    vercel_dashboard_url?: string | null;
     project_assets?: ProjectAsset[];
 }
 
@@ -430,10 +437,19 @@ const STOCK_PHOTOS = [
 
 export default function ProjectEdit({
     project,
-    initialAssets = []
+    initialAssets = [],
+    clientRequest,
 }: {
     project: Project;
     initialAssets?: ProjectAsset[];
+    clientRequest?: {
+        id: number;
+        category: string;
+        category_label: string;
+        title: string;
+        description: string;
+        status: string;
+    } | null;
 }) {
     // Current HTML and Undo/Redo stack
     const [html, setHtml] = useState<string>(project.html_content || '');
@@ -444,11 +460,51 @@ export default function ProjectEdit({
     // Layout & UI states
     const [viewportMode, setViewportMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
     const [activeTab, setActiveTab] = useState<'properties' | 'design' | 'assets'>('properties');
-    const [viewMode, setViewMode] = useState<'visual' | 'code'>('visual');
+    const initialViewMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('view') === 'code' ? 'code' : 'visual';
+    const [viewMode, setViewMode] = useState<'visual' | 'code'>(initialViewMode);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [isDirty, setIsDirty] = useState<boolean>(false);
     const [projectName, setProjectName] = useState<string>(project.project_name || 'Untitled Project');
     const [isRenaming, setIsRenaming] = useState<boolean>(false);
+    const [codeActiveLine, setCodeActiveLine] = useState<number | null>(null);
+
+    const insertBookingSnippetIntoCode = () => {
+        const token = (project as any).booking_public_token;
+        const entryUrl = token ? `/book/entry/${token}` : '#';
+        const snippet = `\n<!-- SS-BOOKING-CTA-START -->\n<a href="${entryUrl}" target="_blank" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all shadow-md">\n  <span>📅 Book an Appointment</span>\n</a>\n<!-- SS-BOOKING-CTA-END -->\n`;
+        let updated = html;
+        if (updated.includes('</nav>')) {
+            updated = updated.replace('</nav>', `${snippet}</nav>`);
+        } else if (updated.includes('</header>')) {
+            updated = updated.replace('</header>', `${snippet}</header>`);
+        } else if (updated.includes('</body>')) {
+            updated = updated.replace('</body>', `${snippet}</body>`);
+        } else {
+            updated = updated + snippet;
+        }
+        setHtml(updated);
+        setIsDirty(true);
+        pushHistory(updated);
+        setIframeSrcDoc(updated);
+        toast.success('Booking CTA button inserted into HTML');
+    };
+
+    const insertContactFormSnippetIntoCode = () => {
+        const formSnippet = `\n<!-- SS-CONTACT-FORM-START -->\n<section id="contact" style="padding: 60px 20px; max-width: 600px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">\n  <div style="text-align: center; margin-bottom: 28px;">\n    <h2 style="font-size: 28px; font-weight: bold; margin-bottom: 8px;">Contact Us</h2>\n    <p style="font-size: 14px; opacity: 0.8;">Send us a message and we will respond as soon as possible.</p>\n  </div>\n  <form id="contact-form" data-contact style="display: flex; flex-direction: column; gap: 14px;">\n    <div>\n      <label style="display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Your Name</label>\n      <input type="text" name="name" required placeholder="John Doe" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d4d4d8; font-size: 14px;" />\n    </div>\n    <div>\n      <label style="display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Email Address</label>\n      <input type="email" name="email" required placeholder="john@example.com" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d4d4d8; font-size: 14px;" />\n    </div>\n    <div>\n      <label style="display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Subject</label>\n      <input type="text" name="subject" placeholder="General Inquiry" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d4d4d8; font-size: 14px;" />\n    </div>\n    <div>\n      <label style="display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Message</label>\n      <textarea name="message" required rows="4" placeholder="Write your message here..." style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d4d4d8; font-size: 14px;"></textarea>\n    </div>\n    <button type="submit" style="padding: 12px 20px; background-color: #4f46e5; color: #ffffff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">\n      Send Message\n    </button>\n  </form>\n</section>\n<!-- SS-CONTACT-FORM-END -->\n`;
+        let updated = html;
+        if (updated.includes('<!-- SS-EMAILER-START -->')) {
+            updated = updated.replace('<!-- SS-EMAILER-START -->', `${formSnippet}\n<!-- SS-EMAILER-START -->`);
+        } else if (updated.includes('</body>')) {
+            updated = updated.replace('</body>', `${formSnippet}</body>`);
+        } else {
+            updated = updated + formSnippet;
+        }
+        setHtml(updated);
+        setIsDirty(true);
+        pushHistory(updated);
+        setIframeSrcDoc(updated);
+        toast.success('Contact Us section inserted into HTML');
+    };
 
     // Deployment state (Vercel)
     const [deploymentStatus, setDeploymentStatus] = useState<string>(
@@ -482,7 +538,30 @@ export default function ProjectEdit({
         return '';
     }, [project.vercel_project_name, projectUrl, project.project_url]);
 
-    const isLocked = deploymentStatus === 'deployed';
+    const { auth } = usePage().props as any;
+    const isAdmin = auth?.roles && (auth.roles.includes('admin') || auth.roles.includes('super_admin'));
+    const [adminRequestId, setAdminRequestId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const reqId = params.get('request_id');
+            if (reqId) setAdminRequestId(reqId);
+        }
+    }, []);
+
+    const [codePreviewDevice, setCodePreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+    const [debouncedCodeHtml, setDebouncedCodeHtml] = useState<string>(project.html_content || '');
+
+    useEffect(() => {
+        if (viewMode !== 'code') return;
+        const timer = setTimeout(() => {
+            setDebouncedCodeHtml(html);
+        }, 150);
+        return () => clearTimeout(timer);
+    }, [html, viewMode]);
+
+    const isLocked = deploymentStatus === 'deployed' && !isAdmin;
 
     // Poll deployment status when in 'deploying' state
     useEffect(() => {
@@ -1653,6 +1732,70 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             removeSelectionLabel();
             showOverlay(el, '__ss-selection-overlay__', '__ss-selection-overlay');
             showLabelOverlay(el, '__ss-selection-label-badge__', '__ss-selection-label', label, '#a78bfa');
+
+            // If admin is editing, attach interactive action buttons to the selection badge
+            const badge = doc.getElementById('__ss-selection-label-badge__');
+            if (badge && isAdmin) {
+                badge.style.pointerEvents = 'auto';
+                const actionsSpan = doc.createElement('span');
+                actionsSpan.style.cssText = 'margin-left:6px;display:inline-flex;align-items:center;gap:4px;pointer-events:auto;';
+
+                // Delete element button
+                const delBtn = doc.createElement('button');
+                delBtn.title = 'Remove this element visually';
+                delBtn.innerHTML = '🗑 Delete';
+                delBtn.style.cssText = 'background:#dc2626;color:#ffffff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;cursor:pointer;line-height:1.2;';
+                delBtn.addEventListener('click', (de) => {
+                    de.preventDefault();
+                    de.stopPropagation();
+                    if (confirm('Delete this element from the page?')) {
+                        el.remove();
+                        removeSelectionLabel();
+                        // Serialize clean HTML
+                        const clone = doc.documentElement.cloneNode(true) as HTMLElement;
+                        clone.querySelectorAll('.__ss-active-section, .__ss-active-element, .__ss-active-card, .__ss-hover-element, .__ss-inline-editing, .__ss-card-drop-target, .__ss-image-panning').forEach(node => {
+                            node.classList.remove('__ss-active-section', '__ss-active-element', '__ss-active-card', '__ss-hover-element', '__ss-inline-editing', '__ss-card-drop-target', '__ss-image-panning');
+                        });
+                        clone.querySelectorAll('#__studiosync_preview_styles__, #__ss-selection-label-badge__, #__ss-hover-label-badge__, #__ss-selection-overlay__, #__ss-hover-overlay__, #__ss-pan-badge__, #__ss-card-drop-badge__').forEach(node => node.remove());
+                        const cleanHtml = '<!DOCTYPE html>\n' + clone.outerHTML;
+                        setHtml(cleanHtml);
+                        setIsDirty(true);
+                        pushHistory(cleanHtml);
+                        setHighlightedTarget(null);
+                        toast.success('Element removed from page');
+                    }
+                });
+
+                // Inspect / Jump to Code button
+                const codeBtn = doc.createElement('button');
+                codeBtn.title = 'Jump to this element in HTML Code Mode';
+                codeBtn.innerHTML = '&lt;/&gt; Code';
+                codeBtn.style.cssText = 'background:#f59e0b;color:#000000;border:none;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;cursor:pointer;line-height:1.2;';
+                codeBtn.addEventListener('click', (ce) => {
+                    ce.preventDefault();
+                    ce.stopPropagation();
+                    const htmlLines = html.split('\n');
+                    let matchedLine = -1;
+                    if (el.id) {
+                        matchedLine = htmlLines.findIndex(l => l.includes(`id="${el.id}"`) || l.includes(`id='${el.id}'`));
+                    }
+                    if (matchedLine === -1) {
+                        const textSample = el.textContent?.trim().slice(0, 30);
+                        if (textSample) {
+                            matchedLine = htmlLines.findIndex(l => l.includes(textSample));
+                        }
+                    }
+                    if (matchedLine !== -1) {
+                        setCodeActiveLine(matchedLine + 1);
+                    }
+                    setViewMode('code');
+                    setIsRightSidebarOpen(false);
+                });
+
+                actionsSpan.appendChild(delBtn);
+                actionsSpan.appendChild(codeBtn);
+                badge.appendChild(actionsSpan);
+            }
         };
 
         const removeSelectionLabel = () => {
@@ -4337,7 +4480,9 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
             // 1. Get the latest HTML from the live iframe or state
             let htmlToSave = '';
 
-            if (iframeRef.current?.contentDocument) {
+            if (viewMode === 'code') {
+                htmlToSave = html;
+            } else if (iframeRef.current?.contentDocument) {
                 try {
                     const docClone = iframeRef.current.contentDocument.documentElement.cloneNode(true) as HTMLElement;
                     // Strip all editor selection/hover classes and badges
@@ -4441,6 +4586,104 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
     return (
         <div className="flex flex-col h-screen w-screen overflow-hidden bg-zinc-950 text-zinc-100 select-none">
             <Head title={`Editing ${projectName} - StudioSync`} />
+
+            {/* ADMIN CONTEXT BANNER */}
+            {isAdmin && (
+                <div className="bg-gradient-to-r from-indigo-950 via-zinc-900 to-indigo-950 border-b border-indigo-800/50 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between text-xs gap-2 shrink-0 z-40">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                        <span className="px-2 py-0.5 rounded font-bold uppercase tracking-wider text-[10px] bg-primary text-primary-foreground shrink-0">
+                            Admin Mode
+                        </span>
+                        <span className="text-zinc-200 truncate">
+                            Editing site for client:{' '}
+                            <strong className="text-white font-semibold">
+                                {project.user?.name || 'Client'}
+                            </strong>
+                            {adminRequestId && (
+                                <span className="text-indigo-300 ml-1.5 font-medium">
+                                    &bull; Fulfilling Service Request #{adminRequestId}
+                                </span>
+                            )}
+                            {deploymentStatus === 'deployed' && (
+                                <span className="text-emerald-400 ml-1.5 font-medium">
+                                    &bull; (Live Deployed &bull; Admin Override Active)
+                                </span>
+                            )}
+                        </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 ml-auto">
+                        {(clientRequest?.category === 'email_integration' || adminRequestId) && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={insertContactFormSnippetIntoCode}
+                                    className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                                    title="Add Contact Us section into website HTML"
+                                >
+                                    <Mail className="w-3.5 h-3.5" />
+                                    <span>+ Add Contact Us Section</span>
+                                </button>
+                                <Link
+                                    href={`/admin/projects/${project.id}/emailer?request_id=${adminRequestId || clientRequest?.id || ''}`}
+                                    className="px-2.5 py-1 rounded bg-blue-950/70 hover:bg-blue-900 text-blue-200 border border-blue-700/50 text-xs font-medium transition-colors flex items-center gap-1"
+                                    title="Configure Emailer Recipient & Token"
+                                >
+                                    <span>Emailer Settings</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                </Link>
+                            </div>
+                        )}
+
+                        {clientRequest?.category === 'booking_system' && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={insertBookingSnippetIntoCode}
+                                    className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                                    title="Add Booking Portal CTA button into website HTML"
+                                >
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    <span>+ Add Booking CTA</span>
+                                </button>
+                                <Link
+                                    href={`/bookings`}
+                                    className="px-2.5 py-1 rounded bg-emerald-950/70 hover:bg-emerald-900 text-emerald-200 border border-emerald-700/50 text-xs font-medium transition-colors flex items-center gap-1"
+                                >
+                                    <span>Bookings Hub</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                </Link>
+                            </div>
+                        )}
+
+                        {adminRequestId && (
+                            <Link
+                                href={`/admin/requests/${adminRequestId}`}
+                                className="px-2.5 py-1 rounded bg-indigo-900/60 hover:bg-indigo-900 text-indigo-200 border border-indigo-700/50 text-xs font-semibold transition-colors"
+                            >
+                                &larr; Back to Request #{adminRequestId}
+                            </Link>
+                        )}
+                        <Link
+                            href={`/admin/projects/${project.id}`}
+                            className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-colors"
+                        >
+                            Admin Specs
+                        </Link>
+                        {(project.vercel_project_name || project.project_url) && (
+                            <a
+                                href={`/admin/projects/${project.id}/vercel-redirect`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1 rounded bg-zinc-900 hover:bg-black text-zinc-200 border border-zinc-700 text-xs font-medium transition-colors flex items-center gap-1"
+                            >
+                                <span>Manage on Vercel</span>
+                                <ExternalLink className="w-3 h-3" />
+                            </a>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* TOP BAR */}
             <header className="h-14 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur px-2.5 sm:px-4 flex items-center justify-between shrink-0 z-30 gap-2">
@@ -4573,7 +4816,10 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                             <Eye className="w-3.5 h-3.5" /> Visual
                         </button>
                         <button
-                            onClick={() => setViewMode('code')}
+                            onClick={() => {
+                                setViewMode('code');
+                                setIsRightSidebarOpen(false);
+                            }}
                             className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${viewMode === 'code' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
                         >
                             <Code2 className="w-3.5 h-3.5" /> Code
@@ -4583,19 +4829,21 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
 
                 {/* Right: Actions & Properties Toggle */}
                 <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-                    {/* Right Sidebar Toggle Button */}
-                    <button
-                        type="button"
-                        onClick={() => setIsRightSidebarOpen(prev => !prev)}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                            isRightSidebarOpen
-                                ? 'text-primary bg-primary/10 border border-primary/20 shadow-xs'
-                                : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-                        }`}
-                        title={isRightSidebarOpen ? "Hide Inspector (Right Sidebar)" : "Show Inspector (Right Sidebar)"}
-                    >
-                        <PanelRight className="w-4 h-4" />
-                    </button>
+                    {/* Right Sidebar Toggle Button (Hidden in Code Mode) */}
+                    {viewMode !== 'code' && (
+                        <button
+                            type="button"
+                            onClick={() => setIsRightSidebarOpen(prev => !prev)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                isRightSidebarOpen
+                                    ? 'text-primary bg-primary/10 border border-primary/20 shadow-xs'
+                                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                            }`}
+                            title={isRightSidebarOpen ? "Hide Inspector (Right Sidebar)" : "Show Inspector (Right Sidebar)"}
+                        >
+                            <PanelRight className="w-4 h-4" />
+                        </button>
+                    )}
 
                     <button
                         onClick={() => {
@@ -4932,41 +5180,44 @@ const updateElementTextPreservingSvg = (el: HTMLElement, newText: string) => {
                             </div>
                         </div>
                     ) : (
-                        /* RAW CODE EDITOR VIEW */
-                        <div className="w-full h-full max-w-5xl bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex flex-col shadow-xl">
-                            <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3 text-xs text-zinc-400">
-                                <span>HTML Source Code</span>
-                                <span>Edits reflect live when you switch back to Visual mode</span>
-                            </div>
-                            <textarea
-                                value={html}
-                                onChange={(e) => {
-                                    setHtml(e.target.value);
-                                    setIsDirty(true);
-                                }}
-                                onBlur={() => {
-                                    pushHistory(html);
-                                    setIframeSrcDoc(html);
-                                }}
-                                className="flex-1 w-full bg-zinc-950 font-mono text-xs text-zinc-300 p-4 rounded-lg border border-zinc-800/80 focus:outline-none focus:ring-1 focus:ring-primary resize-none leading-relaxed"
-                                spellCheck={false}
-                            />
-                        </div>
+                        /* ENHANCED PROFESSIONAL HTML CODE IDE & REAL-TIME PREVIEW */
+                        <HtmlCodeIde
+                            html={html}
+                            onChange={(newHtml) => {
+                                setHtml(newHtml);
+                                setIsDirty(true);
+                            }}
+                            onCommit={(newHtml) => {
+                                setHtml(newHtml);
+                                setIsDirty(true);
+                                pushHistory(newHtml);
+                                setIframeSrcDoc(newHtml);
+                            }}
+                            project={project}
+                            onInsertBookingCta={insertBookingSnippetIntoCode}
+                            onInsertContactForm={insertContactFormSnippetIntoCode}
+                            codePreviewDevice={codePreviewDevice}
+                            onChangePreviewDevice={setCodePreviewDevice}
+                            onSwitchToVisual={() => setViewMode('visual')}
+                            adminRequestId={adminRequestId}
+                            initialLine={codeActiveLine}
+                            clientRequest={clientRequest}
+                        />
                     )}
                 </main>
                 </div>
 
-                {/* Mobile Backdrop for Right Sidebar */}
-                {isRightSidebarOpen && (
+                {/* Mobile Backdrop for Right Sidebar (Only when not in Code Mode) */}
+                {viewMode !== 'code' && isRightSidebarOpen && (
                     <div
                         onClick={() => setIsRightSidebarOpen(false)}
                         className="xl:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-30 transition-opacity"
                     />
                 )}
 
-                {/* RIGHT SIDEBAR: FULL EDITING INSPECTOR PANEL */}
+                {/* RIGHT SIDEBAR: FULL EDITING INSPECTOR PANEL (Completely hidden in Code Mode) */}
                 <aside className={`
-                    ${isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full xl:hidden'}
+                    ${viewMode === 'code' ? 'hidden' : (isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full xl:hidden')}
                     fixed xl:static inset-y-0 right-0 z-40 xl:z-10
                     w-full sm:w-96 xl:w-96 border-l border-zinc-800 bg-zinc-900/95 flex flex-col shrink-0 overflow-hidden
                     transition-transform duration-300 ease-in-out shadow-2xl xl:shadow-none
