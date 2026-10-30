@@ -5,7 +5,7 @@
         pull_request:
           types: [opened, synchronize, reopened]
         schedule:
-          - cron: '0 18 * * *' # Daily at 6:00 PM for Standup
+          - cron: '0 10 * * *' # Triggers every day at 10:00 AM UTC
       jobs:
         hermes-pipeline:
           runs-on: ubuntu-latest
