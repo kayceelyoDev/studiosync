@@ -132,9 +132,13 @@ class GenerateAiPromtPage extends Controller
             abort(403);
         }
 
+        $statusValue = $project->status instanceof \BackedEnum
+            ? $project->status->value
+            : (string) ($project->status ?? 'pending');
+
         return response()->json([
-            'status' => $project->status,
-            'html_content' => $project->status === 'completed' ? $project->html_content : null,
+            'status' => $statusValue,
+            'html_content' => $statusValue === 'completed' ? $project->html_content : null,
         ]);
     }
 

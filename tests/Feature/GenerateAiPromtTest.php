@@ -257,3 +257,20 @@ test('user can generate a project directly without a workspace', function () {
         'project_name' => 'Direct Project No Workspace',
     ]);
 });
+
+test('checkStatus returns json status for project owner', function () {
+    $user = User::factory()->create();
+    $project = Project::create([
+        'user_id' => $user->id,
+        'project_name' => 'Test Project',
+        'preferences' => [],
+        'status' => 'pending',
+    ]);
+
+    $response = $this->actingAs($user)->getJson("/projects/{$project->id}/status");
+    $response->assertOk();
+    $response->assertJson([
+        'status' => 'pending',
+        'html_content' => null,
+    ]);
+});

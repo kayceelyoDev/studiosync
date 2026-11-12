@@ -522,7 +522,11 @@ export default function GenerateAiPromptIndex({ workspace_id, workspace_name }: 
 
     const pollProjectStatus = async (id: number) => {
         try {
-            const res = await fetch(`/projects/${id}/status`);
+            const res = await fetch(`/projects/${id}/status`, {
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
             const data = await res.json();
 
             if (data.status === 'pending') {
